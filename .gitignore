@@ -1,0 +1,5 @@
+*.log
+*.rpt
+*.bidry
+*.bisurf
+/tmp/
