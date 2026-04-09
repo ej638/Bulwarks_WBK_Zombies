@@ -40,6 +40,7 @@ class CfgFunctions
 	#include "area\Functions.hpp"
 	#include "build\Functions.hpp"
 	#include "hostiles\Functions.hpp"
+	#include "hostiles\wbk\Functions.hpp"
 	#include "loot\Functions.hpp"
 };
 
@@ -63,6 +64,8 @@ class CfgRemoteExec
 		class say3DGlobal {};
 		class createBlur {};
 		class suiExplode{};
+		class spawnWBKUnit{};
+		class wbkHitPartScore{};
 	};
 };
 
