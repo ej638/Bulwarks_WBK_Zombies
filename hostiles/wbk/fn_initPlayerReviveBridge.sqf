@@ -86,6 +86,11 @@ WBK_CreateDamage = {
         // Sub-lethal: apply damage directly, bypass HandleDamage to avoid
         // double-processing.  Use array form [damage, false] to skip EH.
         _target setDamage [_newDamage, false];
+        // Notify player of the hit — setDamage [val, false] bypasses all
+        // vanilla screen effects so we trigger the flash manually.
+        [_damage] call EJ_fnc_playerHitEffect;
+        // Update the persistent damage tint to the new health level.
+        [] call EJ_fnc_playerDamageTint;
     };
 };
 
@@ -200,6 +205,12 @@ player addEventHandler ["HandleDamage", {
             _this call bis_fnc_reviveEhHandleDamage
         };
     } else {
+        // Engine-sourced sub-lethal hit (explosion, non-WBK bullet).
+        // Vanilla HandleDamage would normally drive screen effects but the
+        // revive EH chain suppresses them; fire the flash manually.
+        [_damage] call EJ_fnc_playerHitEffect;
+        // Update the persistent damage tint to the new health level.
+        [] call EJ_fnc_playerDamageTint;
         _this call bis_fnc_reviveEhHandleDamage
     };
 }];

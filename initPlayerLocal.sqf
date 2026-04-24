@@ -146,6 +146,8 @@ If you are knocked unconscious but you have a Medikit in your inventory you will
 
 // WBK revive bridge: overrides WBK_CreateDamage + installs revive-aware HandleDamage EH
 call EJ_fnc_initPlayerReviveBridge;
+// Initialise persistent damage tint (starts at full health = no tint).
+[] call EJ_fnc_playerDamageTint;
 
 waitUntil {!isNil "bulwarkCity"};
 

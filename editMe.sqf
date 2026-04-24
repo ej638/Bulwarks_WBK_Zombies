@@ -134,7 +134,7 @@ BULWARK_MEDIKITS = ("BULWARK_MEDIKIT" call BIS_fnc_getParamValue);
 // Fraction of barricade HP removed per bloater explosion (0.0–1.0).
 // At 0.5: takes 2 bloaters to destroy a full-HP barricade.
 // Applies to all barricades within blast radius that have LOS to the explosion.
-EJ_BLOATER_BARRICADE_DAMAGE = 0.5;
+EJ_BLOATER_BARRICADE_DAMAGE = 0.4;
 
 // Blast radius (metres) for barricade HP damage from a bloater explosion.
 // Matches the APERS mine visual/audio radius. Player splash is handled by the mine.
