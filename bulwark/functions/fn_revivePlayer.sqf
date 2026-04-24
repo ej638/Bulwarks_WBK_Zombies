@@ -16,3 +16,4 @@ _player setDamage 0;
 sleep 10;
 
 _player setVariable ["RevByMedikit", false, true];
+_player setVariable ["IMS_IsUnitInvicibleScripted", nil, true];

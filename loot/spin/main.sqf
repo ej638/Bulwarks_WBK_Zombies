@@ -80,7 +80,7 @@ if (floor random 15 == 1) then {
   _finalWeapon = selectRandom _weaponList;
 
   _ammoArray = getArray (configFile >> "CfgWeapons" >> _finalWeapon >> "magazines");
-  _weapon addMagazineCargoGlobal [selectRandom _ammoArray, 1];
+  _weapon addMagazineCargoGlobal [selectRandom _ammoArray, 1 + (floor random 4)];
   _weapon addWeaponCargoGlobal [_finalWeapon, 1];
 
   // Hold weapon for 5 seconds

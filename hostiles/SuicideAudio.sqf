@@ -1,8 +1,8 @@
 _wave = attkWave;
-_allHCs = entities "HeadlessClient_F";
-_allHPs = allPlayers - _allHCs;
 
 while {_wave == attkWave} do {
+  _allHCs = entities "HeadlessClient_F";
+  _allHPs = allPlayers - _allHCs;
   {
     if (side _x == east) then {
       _thisAI = _x;
@@ -14,5 +14,5 @@ while {_wave == attkWave} do {
       } forEach _allHPs;
     };
   } foreach allUnits;
-  sleep 1;
+  sleep 5;
 };

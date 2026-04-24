@@ -57,5 +57,22 @@ systemChat format ["[EJ TEST] Spawned %1 at %2", typeOf _unit, _pos];
         systemChat format ["[EJ TEST] WARNING: Scoring vars unexpected. killPointMulti=%1", _km];
     };
 
+    // Wait for deferred HitPart bridge (needs WBK init + 0.5s remoteExec settle)
+    systemChat "[EJ TEST] Waiting for deferred HitPart bridge...";
+    private _timeout2 = diag_tickTime + 10;
+    waitUntil {
+        !isNil { _u getVariable "EJ_wbk_maxHP" }
+        OR { diag_tickTime > _timeout2 }
+    };
+
+    if (!isNil { _u getVariable "EJ_wbk_maxHP" }) then {
+        systemChat format [
+            "[EJ TEST] OK — Deferred init complete. EJ_wbk_maxHP=%1. HitPart bridge should be live.",
+            _u getVariable "EJ_wbk_maxHP"
+        ];
+    } else {
+        systemChat "[EJ TEST] WARNING: Deferred init timed out. HitPart bridge may not be attached.";
+    };
+
     systemChat "[EJ TEST] Shoot the zombie to verify hit-marker score popups.";
 };

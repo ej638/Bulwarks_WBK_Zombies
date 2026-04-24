@@ -1,58 +1,50 @@
 /**
  *  fn_wbkHitPartScore
  *
- *  Core Adapter — Phase 1
- *  Additive HitPart Event Handler that bridges WBK synthetic damage
- *  into the Bulwarks scoring pipeline.
+ *  Core Adapter — Phase 1 / Phase 3 (Dedicated-Server + HC fix)
+ *  Bridges WBK synthetic damage into the Bulwarks scoring pipeline.
  *
  *  WBK zombies call allowDamage false every tick, which breaks the
- *  vanilla Arma "Hit" EH (damage is always 0). This handler reads
- *  the ammo config data from HitPart and mirrors the WBK damage
- *  calculation to derive a normalised damage value for scoring.
+ *  vanilla Arma "Hit" EH (damage is always 0). This function reads
+ *  the ammo config data and mirrors the WBK damage calculation to
+ *  derive a normalised damage value for scoring.
  *
- *  This EH is registered ALONGSIDE the WBK-native HitPart EH.
- *  It does NOT modify WBK_SynthHP — that is WBK's responsibility.
- *  It only observes the hit data and feeds it to Bulwarks scoring.
+ *  Called in two ways (both via fn_registerHitPartBridge relay):
+ *    - Directly on server when the zombie is server-local
+ *    - Via remoteExecCall from a Headless Client when the zombie
+ *      has been offloaded
  *
- *  HitPart signature:
- *    [[_target, _shooter, _projectile, _position, _velocity,
- *      _selection, _ammo, _direction, _radius, _surface, _direct]]
+ *  Expected params (pre-extracted by the relay wrapper):
+ *    [_target, _shooter, _shotParents, _selection, _ammo]
  *
- *  Domain: Server (HitPart fires on the machine owning the unit)
+ *  Domain: Server only (relay ensures this)
  */
 
 if (!isServer) exitWith {};
 
-(_this select 0) params [
+params [
     "_target",
     "_shooter",
-    "_projectile",
-    "_position",
-    "_velocity",
+    "_shotParents",
     "_selection",
-    "_ammo",
-    "_direction",
-    "_radius",
-    "_surface",
-    "_direct"
+    "_ammo"
 ];
 
-// --- Guard: no self-hits, no dead targets, shooter must be a player ---
+// --- Guard: no self-hits, no dead targets ---
 if (_target == _shooter) exitWith {};
 if (!alive _target)      exitWith {};
 
 // Resolve the actual player who caused the hit
-// _shooter may be a vehicle; check instigator via getShotParents
+// _shooter may be a vehicle; use pre-extracted _shotParents
+// (_projectile may have despawned during remoteExec transit)
 private _scorer = if (isPlayer _shooter) then {
     _shooter
 } else {
-    // For indirect fire (vehicles, explosions), try to resolve the player
-    private _parents = getShotParents _projectile;
-    if (count _parents > 1 && { isPlayer (_parents select 1) }) then {
-        _parents select 1
+    if (count _shotParents > 1 && { isPlayer (_shotParents select 1) }) then {
+        _shotParents select 1
     } else {
-        if (count _parents > 0 && { isPlayer (_parents select 0) }) then {
-            _parents select 0
+        if (count _shotParents > 0 && { isPlayer (_shotParents select 0) }) then {
+            _shotParents select 0
         } else {
             objNull
         };
@@ -60,6 +52,11 @@ private _scorer = if (isPlayer _shooter) then {
 };
 
 if (isNull _scorer || !isPlayer _scorer) exitWith {};
+
+// --- Track last scorer for Killed EH fallback ---
+// WBK kills via setDamage 1 which may not pass instigator across the
+// network boundary on dedicated server. This gives fn_killed a fallback.
+_target setVariable ["EJ_lastScorer", _scorer];
 
 // --- Determine the effective damage this hit dealt ---
 // Mirror WBK's HitPart priority chain (simplified for scoring only):
@@ -110,6 +107,11 @@ private _normDmg = (_effectiveDmg / _maxHP) min 1;
 
 // --- Award score identically to score/functions/fn_hit.sqf ---
 private _scoreVal = SCORE_HIT + (SCORE_DAMAGE_BASE * _normDmg);
+
+// Mark this hit as scored by HitPart (for MPHit dedup).
+// MPHit also fires for the same hit; if this timestamp is recent,
+// MPHit skips its flat scoring since HitPart has more precise data.
+_target setVariable ["EJ_lastHitPartTime", diag_tickTime];
 
 // Add to player's total score
 [_scorer, _scoreVal] call killPoints_fnc_add;

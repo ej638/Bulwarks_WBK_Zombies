@@ -35,5 +35,5 @@ while {true} do {
         };
     } foreach _allHPs;
 
-    sleep 0.01;
+    sleep 1;
 };

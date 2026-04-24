@@ -91,13 +91,13 @@ _roomCount = 0;
 							case 0: {
 								_weapon = selectRandom LOOT_WEAPON_POOL;
 								_ammoArray = getArray (configFile >> "CfgWeapons" >> _weapon >> "magazines");
-								_lootHolder addMagazineCargoGlobal [selectRandom _ammoArray, 1];
+								_lootHolder addMagazineCargoGlobal [selectRandom _ammoArray, 5];
 								_lootHolder addWeaponCargoGlobal [_weapon, 1];
 							};
 							case 1: {
 								_weapon = selectRandom LOOT_WEAPON_POOL;
 								_ammoArray = getArray (configFile >> "CfgWeapons" >> _weapon >> "magazines");
-								_lootHolder addMagazineCargoGlobal [selectRandom _ammoArray, 1 + (floor random 3)];
+								_lootHolder addMagazineCargoGlobal [selectRandom _ammoArray, 1 + (floor random 4)];
 							};
 							case 2: {
 								_clothes = selectRandom LOOT_APPAREL_POOL;
@@ -122,13 +122,13 @@ _roomCount = 0;
 							case 0: {
 								_weapon = selectRandom LOOT_WHITELIST_WEAPON;
 								_ammoArray = getArray (configFile >> "CfgWeapons" >> _weapon >> "magazines");
-								_lootHolder addMagazineCargoGlobal [selectRandom _ammoArray, 1];
+								_lootHolder addMagazineCargoGlobal [selectRandom _ammoArray, 5];
 								_lootHolder addWeaponCargoGlobal [_weapon, 1];
 							};
 							case 1: {
 								_weapon = selectRandom LOOT_WHITELIST_WEAPON;
 								_ammoArray = getArray (configFile >> "CfgWeapons" >> _weapon >> "magazines");
-								_lootHolder addMagazineCargoGlobal [selectRandom _ammoArray, 1 + (floor random 3)];
+								_lootHolder addMagazineCargoGlobal [selectRandom _ammoArray, 1 + (floor random 4)];
 							};
 							case 2: {
 								_clothes = selectRandom LOOT_WHITELIST_APPAREL;

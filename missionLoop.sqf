@@ -18,8 +18,6 @@ suicideWave = false;
 waveUnits = [[],[],[]];
 revivedPlayers = [];
 MIND_CONTROLLED_AI = [];
-wavesSinceArmour = 0;
-wavesSinceCar = 0;
 wavesSinceSpecial = 0;
 SatUnlocks = [];
 publicVariable 'SatUnlocks';
@@ -87,6 +85,8 @@ while {runMissionLoop} do {
 		{
 			mainZeus addCuratorEditableObjects [[_x], true];
 		} foreach _allHPs;
+
+		sleep 0.5;
 	};
 
 	if(missionFailure) exitWith {};

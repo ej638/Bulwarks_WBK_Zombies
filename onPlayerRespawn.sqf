@@ -1,43 +1,47 @@
 waitUntil {!isNil "bulwarkBox"};
-["Terminate"] call BIS_fnc_EGSpectator;
 player setVariable ["buildItemHeld", false];
 
-//Make player immune to fall damage and immune to all damage while incapacitated
-waitUntil {!isNil "TEAM_DAMAGE"};
-player removeAllEventHandlers 'HandleDamage';
-player addEventHandler ["HandleDamage", {
-    _beingRevived = player getVariable "RevByMedikit";
-    TEAM_DAMAGE = missionNamespace getVariable "TEAM_DAMAGE";
-    _incDamage = _this select 2;
-    _hitpoint = _this select 5;
-    _currentPointDamage = player getHitIndex _hitpoint;
-    _totalDamage = _incDamage + _currentPointDamage;
-    _playerItems = items player;
-    _players = allPlayers;
-    if ((_this select 4) == "" || lifeState player == "INCAPACITATED" || _beingRevived || ((_this select 3) in _players && !TEAM_DAMAGE && !((_this select 3) isEqualTo player))) then {
-        0
-    } else {
-        if (_totalDamage >= 0.89) then {
-        _playerItems = items player;
-            if ("Medikit" in _playerItems) then {
-                player removeItem "Medikit";
-                player setVariable ["RevByMedikit", true, true];
-                [player] remoteExec ["bulwark_fnc_revivePlayer", 2];
-                0;
-            }else{
-                _this call bis_fnc_reviveEhHandleDamage;
+// WBK revive bridge: overrides WBK_CreateDamage + installs revive-aware HandleDamage EH
+call EJ_fnc_initPlayerReviveBridge;
+
+// Delete empty containers + auto-pickup compatible magazines.
+// WeaponHolderSimulated_Scripted does not trigger the engine's built-in
+// magazine auto-pickup (that only fires for GroundWeaponHolder), so we
+// emulate it: when a weapon is taken, grab its compatible mags from the
+// same holder and add them to the player's inventory.
+if (!isNil "EJ_lootTakeEH") then {
+    player removeEventHandler ["Take", EJ_lootTakeEH];
+};
+EJ_lootTakeEH = player addEventHandler ["Take", {
+    params ["_unit", "_container", "_item"];
+
+    if (typeOf _container != "WeaponHolderSimulated_Scripted") exitWith {};
+
+    // If the taken item is a weapon, auto-grab compatible magazines
+    private _compatMags = getArray (configFile >> "CfgWeapons" >> _item >> "magazines");
+    if (_compatMags isNotEqualTo []) then {
+        private _containerMags = magazineCargo _container;
+        private _toKeep = [];
+        {
+            if (_x in _compatMags && {_unit canAdd _x}) then {
+                _unit addMagazine _x;
+            } else {
+                _toKeep pushBack _x;
             };
-        } else {
-            _this call bis_fnc_reviveEhHandleDamage;
-        };
+        } forEach _containerMags;
+
+        clearMagazineCargoGlobal _container;
+        { _container addMagazineCargoGlobal [_x, 1] } forEach _toKeep;
+    };
+
+    // Delay cleanup to let cargo state sync across the network
+    [_container] spawn {
+        params ["_container"];
+        sleep 0.5;
+        if (isNull _container) exitWith {};
+        [_container] remoteExecCall ["loot_fnc_deleteIfEmpty", 2];
     };
 }];
-
-//delete empty continers
-[player, ['Take', {
-  params ['_unit', '_container', '_item'];
-  [_container] remoteExecCall ["loot_fnc_deleteIfEmpty", 2];
-}]] remoteExec ['addEventHandler', 0, true];
 
 //remove and add gear
 removeHeadgear player;
@@ -49,6 +53,16 @@ removeAllAssignedItems player;
 player setPosASL ([bulwarkBox] call bulwark_fnc_findPlaceAround);
 
 if(PLAYER_STARTWEAPON) then {
+    // Random primary weapon (1 mag loaded, no spares)
+    if (!isNil "List_Primaries" && {count List_Primaries > 0}) then {
+        _primary = selectRandom List_Primaries;
+        player addWeapon _primary;
+        _ammoArray = getArray (configFile >> "CfgWeapons" >> _primary >> "magazines");
+        if (count _ammoArray > 0) then {
+            player addWeaponItem [_primary, selectRandom _ammoArray];
+        };
+    };
+
     player addMagazine "16Rnd_9x21_Mag";
     player addMagazine "16Rnd_9x21_Mag";
     player addWeapon "hgun_P07_F";
@@ -65,6 +79,14 @@ if(PLAYER_STARTNVG) then {
     player assignItem "Integrated_NVG_F";
     player linkItem "Integrated_NVG_F";
 };
+
+player addItem "ItemCompass";
+player assignItem "ItemCompass";
+player linkItem "ItemCompass";
+
+player addItem "ItemGPS";
+player assignItem "ItemGPS";
+player linkItem "ItemGPS";
 
 if (isClass (configfile >> "CfgVehicles" >> "tf_anarc164")) then {
   player addItem "tf_anprc152";

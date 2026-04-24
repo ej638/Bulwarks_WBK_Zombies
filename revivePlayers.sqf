@@ -15,4 +15,5 @@ while {true} do {
       };
     };
   } forEach _allHPs;
+  sleep 1;
 };
