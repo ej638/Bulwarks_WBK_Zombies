@@ -2,83 +2,6 @@
 
 ---
 
-## Hotfix: Death Cam Delay Before Respawn
-
-**Date:** 2026-04-20
-**Status:** Complete
-
-### Problem
-
-During a wave, dying players were immediately teleported back to the Bulwark with no delay. This was especially jarring for Smasher/Goliath special execution kills where a cinematic animation was still playing. Players respawning before the animation finished could see themselves being killed mid-finishing-blow.
-
-### Root Cause
-
-`onPlayerKilled.sqf` hard-coded `[0]` as the argument to `setPlayerRespawnTime` on the normal (tickets-remaining) path. This set the respawn countdown to zero seconds, firing `onPlayerRespawn.sqf` almost immediately — which calls `["Terminate"] call BIS_fnc_EGSpectator`, destroying the death spectator that had just been initialized.
-
-The mission already had all required infrastructure:
-- `RESPAWN_TIME` lobby parameter defined in `description.ext` (default 10s, options: 0/5/10/20/30)
-- `BIS_fnc_EGSpectator` already initialized in `onPlayerKilled.sqf` immediately after the respawn timer is set
-- `fn_startWave.sqf` already used `[RESPAWN_TIME]` correctly for the same call
-
-Only the normal-death branch used `[0]` — the no-tickets branch correctly used `[RESPAWN_TIME]`.
-
-### Fix
-
-Changed `[0]` to `[RESPAWN_TIME]` on the normal-death branch. `BIS_fnc_EGSpectator` was then removed entirely in favour of the native Arma 3 death cam (see below). Players now wait the lobby-configured delay (default 10 seconds) in the native orbiting death cam before auto-teleporting to the Bulwark.
-
-Build-phase deaths are unaffected (guarded by `if (!_buildPhase)` which skips the entire block). No-tickets game-over path is unaffected (sets `RESPAWN_TIME = 99999`).
-
-### Revision: Native Arma Death Cam (same hotfix, same date)
-
-`BIS_fnc_EGSpectator` (free-roam spectator) was replaced with Arma 3's built-in death cam. The native cam starts at the corpse and slowly orbits — it activates automatically during the `setPlayerRespawnTime` delay whenever no other camera system is occupying the slot. No replacement code was required; removing the EGSpectator calls was sufficient.
-
-**Why:** The free-roam cam started first-person on the body, and if the player was sprinting at death, the held movement keys caused the camera to rocket forward at full speed. The native cam has no such issue.
-
-### Files Modified
-
-| File | Change |
-|---|---|
-| `onPlayerKilled.sqf` | `[0] remoteExec ["setPlayerRespawnTime", 0]` → `[RESPAWN_TIME] remoteExec ["setPlayerRespawnTime", 0]`; removed `sleep 0.1` + `BIS_fnc_EGSpectator Initialize` block |
-| `onPlayerRespawn.sqf` | Removed `["Terminate"] call BIS_fnc_EGSpectator` |
-| `bulwark/functions/fn_startWave.sqf` | Removed `["Terminate"] remoteExec ["BIS_fnc_EGSpectator", 0]` |
-| `bulwark/functions/fn_endWave.sqf` | Removed `["Terminate"] remoteExec ["BIS_fnc_EGSpectator", 0]` |
-
----
-
-## Hotfix: Bloater Rush — exitWith + All-Bloater Composition
-
-**Date:** 2026-04-20  
-**Status:** Complete
-
-### Root Cause
-
-`fn_buildWaveManifest.sqf` used `if (cond) then { ... _manifest }` for both override blocks (bloater rush and siege wave). In SQF, this is **not an early return** — the value of `_manifest` inside the `then` block is silently discarded and execution continues past the closing `};`. Both override blocks fell through to the normal T5→T4→T3→T2→T1 allocation, which rebuilt `_manifest` from scratch. The bloater rush produced only the handful of Boomers that normal T3 RNG happened to select.
-
-### Fix
-
-| Block | Change |
-|---|---|
-| Bloater rush (`~line 50`) | `then {` → `exitWith {`; removed 60/40 split; entire budget now spent on bloaters (`floor(_budget / 8)`) |
-| Siege wave (`~line 100`) | `then {` → `exitWith {`; no composition change |
-
-### Files Modified
-
-| File | Change |
-|---|---|
-| `hostiles/wbk/fn_buildWaveManifest.sqf` | exitWith on both override blocks; bloater rush is now 100% Boomers |
-
-### Variables Removed
-
-| Variable | Was Used For |
-|---|---|
-| `_bloaterPct` | 60–80% scaling fraction — removed, replaced by full budget |
-| `_bloaterBudget` | Fraction of budget for bloaters — removed |
-| `_t1Budget` | Remainder budget for T1 horde — removed |
-| `_t1Count` | T1 horde unit count — removed |
-| `_t1Pool` | T1 registry filter — removed (bloater rush block only) |
-
----
-
 ## Phase 1: Core Adapter — COMPLETE
 
 **Date:** 2026-04-09  
@@ -2128,3 +2051,222 @@ Two compounding design issues:
 | Variable | Change |
 |---|---|
 | `EJ_wbk_earlyBloaterCount` | Now always `1` for wave 3, `0` for all other waves |
+
+---
+
+## Hotfix: Death Cam Delay Before Respawn
+
+**Date:** 2026-04-20
+**Status:** Complete
+
+### Problem
+
+During a wave, dying players were immediately teleported back to the Bulwark with no delay. This was especially jarring for Smasher/Goliath special execution kills where a cinematic animation was still playing. Players respawning before the animation finished could see themselves being killed mid-finishing-blow.
+
+### Root Cause
+
+`onPlayerKilled.sqf` hard-coded `[0]` as the argument to `setPlayerRespawnTime` on the normal (tickets-remaining) path. This set the respawn countdown to zero seconds, firing `onPlayerRespawn.sqf` almost immediately — which calls `["Terminate"] call BIS_fnc_EGSpectator`, destroying the death spectator that had just been initialized.
+
+The mission already had all required infrastructure:
+- `RESPAWN_TIME` lobby parameter defined in `description.ext` (default 10s, options: 0/5/10/20/30)
+- `BIS_fnc_EGSpectator` already initialized in `onPlayerKilled.sqf` immediately after the respawn timer is set
+- `fn_startWave.sqf` already used `[RESPAWN_TIME]` correctly for the same call
+
+Only the normal-death branch used `[0]` — the no-tickets branch correctly used `[RESPAWN_TIME]`.
+
+### Fix
+
+Changed `[0]` to `[RESPAWN_TIME]` on the normal-death branch. `BIS_fnc_EGSpectator` was then removed entirely in favour of the native Arma 3 death cam (see below). Players now wait the lobby-configured delay (default 10 seconds) in the native orbiting death cam before auto-teleporting to the Bulwark.
+
+Build-phase deaths are unaffected (guarded by `if (!_buildPhase)` which skips the entire block). No-tickets game-over path is unaffected (sets `RESPAWN_TIME = 99999`).
+
+### Revision: Native Arma Death Cam (same hotfix, same date)
+
+`BIS_fnc_EGSpectator` (free-roam spectator) was replaced with Arma 3's built-in death cam. The native cam starts at the corpse and slowly orbits — it activates automatically during the `setPlayerRespawnTime` delay whenever no other camera system is occupying the slot. No replacement code was required; removing the EGSpectator calls was sufficient.
+
+**Why:** The free-roam cam started first-person on the body, and if the player was sprinting at death, the held movement keys caused the camera to rocket forward at full speed. The native cam has no such issue.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `onPlayerKilled.sqf` | `[0] remoteExec ["setPlayerRespawnTime", 0]` → `[RESPAWN_TIME] remoteExec ["setPlayerRespawnTime", 0]`; removed `sleep 0.1` + `BIS_fnc_EGSpectator Initialize` block |
+| `onPlayerRespawn.sqf` | Removed `["Terminate"] call BIS_fnc_EGSpectator` |
+| `bulwark/functions/fn_startWave.sqf` | Removed `["Terminate"] remoteExec ["BIS_fnc_EGSpectator", 0]` |
+| `bulwark/functions/fn_endWave.sqf` | Removed `["Terminate"] remoteExec ["BIS_fnc_EGSpectator", 0]` |
+
+---
+
+## Hotfix: Bloater Rush — exitWith + All-Bloater Composition
+
+**Date:** 2026-04-20  
+**Status:** Complete
+
+### Root Cause
+
+`fn_buildWaveManifest.sqf` used `if (cond) then { ... _manifest }` for both override blocks (bloater rush and siege wave). In SQF, this is **not an early return** — the value of `_manifest` inside the `then` block is silently discarded and execution continues past the closing `};`. Both override blocks fell through to the normal T5→T4→T3→T2→T1 allocation, which rebuilt `_manifest` from scratch. The bloater rush produced only the handful of Boomers that normal T3 RNG happened to select.
+
+### Fix
+
+| Block | Change |
+|---|---|
+| Bloater rush (`~line 50`) | `then {` → `exitWith {`; removed 60/40 split; entire budget now spent on bloaters (`floor(_budget / 8)`) |
+| Siege wave (`~line 100`) | `then {` → `exitWith {`; no composition change |
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_buildWaveManifest.sqf` | exitWith on both override blocks; bloater rush is now 100% Boomers |
+
+### Variables Removed
+
+| Variable | Was Used For |
+|---|---|
+| `_bloaterPct` | 60–80% scaling fraction — removed, replaced by full budget |
+| `_bloaterBudget` | Fraction of budget for bloaters — removed |
+| `_t1Budget` | Remainder budget for T1 horde — removed |
+| `_t1Count` | T1 horde unit count — removed |
+| `_t1Pool` | T1 registry filter — removed (bloater rush block only) |
+
+---
+
+## Hotfix: Wave-Complete Notification Sometimes Missing
+
+**Date:** 2026-04-23
+**Status:** Complete
+
+### Problem
+
+After killing all zombies in a wave, the "Wave N complete!" popup notification (with sound) intermittently failed to appear. Players were left in silence not knowing whether the round was over or if a zombie was stuck somewhere until the 15-second countdown for the next wave began.
+
+### Root Cause Analysis
+
+Two independent root causes:
+
+**RC1 — Drip-feed PFH not stopped at wave end (Primary)**
+
+`fn_spawnWBKWave` queues overflow zombies into `EJ_spawnQueue` when `EJ_MAX_ACTIVE_ZOMBIES` is hit, and the `EJ_dripFeedHandler` CBA PFH drains the queue during the wave. `fn_endWave` stopped `EJ_bloaterPFHHandle` but had no code to stop `EJ_dripFeedHandler` or clear `EJ_spawnQueue`. After the wave-complete notification fired and `fn_endWave` entered its `sleep _downTime`, the still-running PFH saw EAST count = 0 (below cap) and spawned remaining queued zombies into the build phase. These "ghost" zombies were alive when Wave N+1 started, inflating its EAST count. Wave N+1's end-detection (`EAST countSide allUnits == 0`) could not fire until the ghosts also died, delaying or silencing the Wave N+1 notification entirely.
+
+**RC2 — ClearStuck 60-second silence window (Secondary)**
+
+`clearStuck.sqf`'s WBK path requires two consecutive 30-second stall cycles (60s total) before killing a unit. When one zombie gets terrain-stuck and all others die, players see zero visible zombies but the wave-end check does not fire for up to 60 seconds. The notification eventually fires at T=60+, but players have mentally moved on and perceive it as missing.
+
+### Fix
+
+**Phase 1 — Stop drip-feed at wave end (`bulwark/functions/fn_endWave.sqf`)**
+
+Added drip-feed teardown immediately after the existing bloater PFH teardown block, using the identical guard pattern:
+```sqf
+if (!isNil "EJ_dripFeedHandler" && {EJ_dripFeedHandler >= 0}) then {
+    [EJ_dripFeedHandler] call CBA_fnc_removePerFrameHandler;
+    EJ_dripFeedHandler = -1;
+};
+EJ_spawnQueue = [];
+```
+Discarding the queue at wave end is correct: if all active zombies died before the queue drained, the wave is over and unspawned overflow units are never needed.
+
+**Phase 2 — Fast-path last-zombie kill in clearStuck (`hostiles/clearStuck.sqf`)**
+
+In the WBK stuck-check block, the kill condition was changed from `_strikes >= 2` to also trigger on strike 1 when the zombie is the sole remaining EAST unit:
+```sqf
+private _isLastUnit = (EAST countSide allUnits == 1);
+if (_strikes >= 2 || _isLastUnit) then { _wbkUnit setDamage 1; ... };
+```
+The recovery `doMove` attempt (strike 1 path) is only worthwhile when other zombies are alive. When a unit is the last one after 30 seconds of being stuck, the priority shifts to ending the wave. This cuts the maximum silence window from 60s to 30s.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `bulwark/functions/fn_endWave.sqf` | Added `EJ_dripFeedHandler` PFH removal + `EJ_spawnQueue = []` after bloater PFH teardown. |
+| `hostiles/clearStuck.sqf` | WBK kill condition: `_strikes >= 2 \|\| (EAST countSide allUnits == 1 && _strikes >= 1)`. Updated diag_log to report `_isLastUnit`. |
+
+---
+
+## Enhancement: Player Damage Visual Feedback
+
+**Date:** 2026-04-23 (initial); revised 2026-04-24 (HP bar removed, replaced with persistent red tint)
+**Status:** Built, pending in-game test
+
+### Problem
+
+Players could not tell whether they were taking damage. No visual signal fired when hit by WBK zombies. The HUD showed score, wave, and tickets — no health readout.
+
+### Root Cause
+
+Two systems suppressed all feedback:
+
+1. **`WBK_CreateDamage` sub-lethal path** (`fn_initPlayerReviveBridge.sqf`): applies damage via `setDamage [val, false]` — the array form bypasses the `HandleDamage` EH and with it **all vanilla pain/screen effects** (blood vignette, redness). This is the dominant damage path for every zombie melee hit.
+
+2. **`HandleDamage` EH gates** return `0` on most branches (INCAPACITATED, RevByMedikit, environmental). On the non-lethal sub-threshold branch, `bis_fnc_reviveEhHandleDamage` is called but the vanilla redness effect still does not render because the EH chain returns a value before the engine's own visual code runs.
+
+### Fix
+
+Two complementary effects — an immediate flash and a persistent red tint — together communicate both the instant of impact and the accumulated health deficit.
+
+#### New file: `hostiles/wbk/fn_playerHitEffect.sqf`
+
+Client-side function that displays a brief **chromatic aberration** ppEffect flash on every hit:
+- **Intensity formula:** `(0.02 max (_damage * 0.25)) min 0.08` — 2% minimum, 8% maximum
+- A typical zombie melee hit (0.15–0.25 damage) produces ~3.75–6.25% lateral color split
+- Uses ppEffect priority 1750 (above `fn_ragePack` ChromAberration at 200; below its ColorInversion at 2500)
+- Flash commits instantly, holds 0.1 s, then fades to zero over 0.5 s inside a `spawn` block (non-blocking to caller)
+- Handle destroyed after fade — zero ppEffect residue
+
+#### New file: `hostiles/wbk/fn_playerDamageTint.sqf`
+
+Client-side function that maintains a **persistent full-screen red overlay** proportional to current health deficit:
+
+**Implementation note — ppEffect abandoned:** The initial implementation used `ColorCorrections` ppEffect with `contrast=0`, which caused a full-screen bright green render bug (Arma 3 internal color pipeline issue when contrast=0). Replaced with a direct GUI control approach which is format-safe.
+
+- Uses `DamageTintOverlay` (idc 99998) — a full-screen `RscStructuredText` control defined in `score/hud.hpp` with `colorBackground[] = {1,0,0,0}` (red, alpha=0 at rest)
+- **Alpha formula:** `alpha = (damage player) * 0.25` → range 0.00 (full health) to ~0.22 (near-incapacitation)
+- On first call: registers a 1-second CBA PFH (`EJ_dmgTintPFH`) that continuously refreshes the tint — catches all heal sources (Medikit revive, Bulwark heal) without explicit hooks
+- `ctrlSetBackgroundColor` + `ctrlCommit 0.4` — smooth 0.4s transition on both damage and healing
+- Because `cutRsc` recreates the `KillPointsHud` display on every score update (resetting `DamageTintOverlay` to alpha=0), `killPoints_fnc_updateHud` calls this function at the end of each update to immediately reapply the tint
+- Called from: Hook A (WBK melee hit), Hook B (engine-sourced hit), `initPlayerLocal.sqf` (initialise at load), `onPlayerRespawn.sqf` (clear tint on respawn), `fn_updateHud.sqf` (reapply after cutRsc)
+
+#### Hook A — `WBK_CreateDamage` sub-lethal path (`fn_initPlayerReviveBridge.sqf`)
+
+After `_target setDamage [_newDamage, false]`:
+```sqf
+[_damage] call EJ_fnc_playerHitEffect;
+[] call EJ_fnc_playerDamageTint;
+```
+Covers all regular WBK zombie melee, Smasher melee, Screamer, Bloater melee.
+
+#### Hook B — HandleDamage EH final else branch (`fn_initPlayerReviveBridge.sqf`)
+
+Before `_this call bis_fnc_reviveEhHandleDamage` in the sub-lethal engine-damage path:
+```sqf
+[_damage] call EJ_fnc_playerHitEffect;
+[] call EJ_fnc_playerDamageTint;
+```
+Covers engine-sourced damage (explosions, non-WBK projectiles).
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_playerHitEffect.sqf` | **New file** — client-side ChromAberration flash scaled to damage |
+| `hostiles/wbk/fn_playerDamageTint.sqf` | **New file** — persistent GUI overlay red tint scaled to health deficit; includes 1s CBA PFH for heal tracking. (Replaced broken ppEffect ColorCorrections approach.) |
+| `hostiles/wbk/Functions.hpp` | Added `class playerHitEffect {};` and `class playerDamageTint {};` to `class wbk` |
+| `hostiles/wbk/fn_initPlayerReviveBridge.sqf` | Hook A: flash + tint update after sub-lethal `setDamage [val, false]`; Hook B: flash + tint update in HandleDamage final else branch |
+| `score/hud.hpp` | Added `DamageTintOverlay` (idc 99998) full-screen red control as first entry in `controlsBackground` (renders behind score text) |
+| `score/functions/fn_updateHud.sqf` | Added `[] call EJ_fnc_playerDamageTint` at end to reapply tint after each `cutRsc` recreates the display |
+| `initPlayerLocal.sqf` | Added `[] call EJ_fnc_playerDamageTint` after `call EJ_fnc_initPlayerReviveBridge` |
+| `onPlayerRespawn.sqf` | Added `[] call EJ_fnc_playerDamageTint` after `call EJ_fnc_initPlayerReviveBridge` |
+
+### New Global Variables
+
+| Variable | Set By | Scope | Purpose |
+|---|---|---|---|
+| `EJ_dmgTintPFH` | `fn_playerDamageTint` | Client-local | CBA PFH handle for 1s heal-tracking refresh |
+
+### Performance Notes
+
+- **Hit flash:** created/destroyed per hit (one `spawn` per hit for fade block). Zero server cost.
+- **Persistent tint:** `ctrlSetBackgroundColor` + `ctrlCommit 0.4` on every hit (immediate) and every 1s (PFH poll). `damage player` is a single engine read per tick. Negligible overhead.
+- **PFH interval:** 1 s — far below the threshold for perceptible lag in the healing response.
+- No server involvement. No additional polling beyond the 1s tint PFH.

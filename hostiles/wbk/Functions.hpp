@@ -12,5 +12,7 @@ class EJ
         class initPlayerReviveBridge {};
         class bloaterBarricadePFH {};
         class barricadeDestroyVFX {};
+        class playerHitEffect {};
+        class playerDamageTint {};
     };
 };

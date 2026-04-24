@@ -3,6 +3,8 @@ player setVariable ["buildItemHeld", false];
 
 // WBK revive bridge: overrides WBK_CreateDamage + installs revive-aware HandleDamage EH
 call EJ_fnc_initPlayerReviveBridge;
+// Respawn resets damage to 0 — immediately clear the tint.
+[] call EJ_fnc_playerDamageTint;
 
 // Delete empty containers + auto-pickup compatible magazines.
 // WeaponHolderSimulated_Scripted does not trigger the engine's built-in

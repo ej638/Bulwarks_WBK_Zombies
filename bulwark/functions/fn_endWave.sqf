@@ -25,6 +25,17 @@ if (!isNil "EJ_bloaterPFHHandle" && {EJ_bloaterPFHHandle >= 0}) then {
 };
 EJ_activeBloaters = [];
 
+// ── Stop Drip-Feed PFH + clear spawn queue ──
+// The overflow queue must be drained here, not left running into the build phase.
+// If any queue entries remain when the wave ends, the PFH would spawn them into
+// downtime — those ghost zombies bleed into the next wave's EAST count and delay
+// (or entirely prevent) Wave N+1's end-notification from firing on time.
+if (!isNil "EJ_dripFeedHandler" && {EJ_dripFeedHandler >= 0}) then {
+	[EJ_dripFeedHandler] call CBA_fnc_removePerFrameHandler;
+	EJ_dripFeedHandler = -1;
+};
+EJ_spawnQueue = [];
+
 // ── Barricade survival bonus ──
 // Award points for barricades that took damage but survived the wave.
 // The worse the damage, the higher the bonus (defending under pressure).

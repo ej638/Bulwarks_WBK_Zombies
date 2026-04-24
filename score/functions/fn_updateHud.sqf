@@ -32,4 +32,7 @@ if (!isDedicated) then {
     _KillPointsHud = _ui displayCtrl 99999;
     _KillPointsHud ctrlSetStructuredText parseText _hudText;
     _KillPointsHud ctrlCommit 0;
+    // Re-apply damage tint — cutRsc recreates the display each call,
+    // resetting DamageTintOverlay to alpha 0 (its HPP default).
+    [] call EJ_fnc_playerDamageTint;
 };

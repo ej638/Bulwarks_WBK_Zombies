@@ -90,11 +90,16 @@ while {true} do {
           // Zombie barely moved and is not near any player — increment strike
           private _strikes = _wbkUnit getVariable ["EJ_stuckStrikes", 0];
           _strikes = _strikes + 1;
-          if (_strikes >= 2) then {
-            // 2 consecutive stalls (60s stationary) — kill the stuck zombie
+          // Fast-path: kill immediately on strike 1 if this is the sole remaining
+          // EAST unit. Recovery doMove is only useful when other zombies are alive;
+          // when it's the last one, waiting a full extra 30s just leaves players
+          // in silence wondering if the wave is over.
+          private _isLastUnit = (EAST countSide allUnits == 1);
+          if (_strikes >= 2 || _isLastUnit) then {
+            // 2 consecutive stalls (60s) OR last zombie after 30s stall — kill it
             _wbkUnit setDamage 1;
-            diag_log format ["[EJ] Stuck WBK zombie killed: %1 at %2 (moved %3m in 60s, %4m from nearest player)",
-              typeOf _wbkUnit, getPosATL _wbkUnit, _moved, _nearPlayerDist];
+            diag_log format ["[EJ] Stuck WBK zombie killed: %1 at %2 (moved %3m, %4m from player, last=%5)",
+              typeOf _wbkUnit, getPosATL _wbkUnit, _moved, _nearPlayerDist, _isLastUnit];
           } else {
             _wbkUnit setVariable ["EJ_stuckStrikes", _strikes];
             // Recovery attempt: refresh target knowledge and issue doMove.
