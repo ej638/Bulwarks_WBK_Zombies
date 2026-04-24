@@ -7,7 +7,6 @@
 **/
 
 
-["Terminate"] remoteExec ["BIS_fnc_EGSpectator", 0];
 [] remoteExec ["killPoints_fnc_updateHud", 0];
 
 for ("_i") from 0 to 14 do {
@@ -86,7 +85,7 @@ SpecialWaveType = "";
 droneCount = 0;
 
 if (specialWave && attkWave >= 5 and attkWave < 10) then {
-	_randWave = floor random 3;
+	_randWave = floor random 2;
 	switch (_randWave) do
 	{
 		case 0:
@@ -96,17 +95,13 @@ if (specialWave && attkWave >= 5 and attkWave < 10) then {
 		case 1:
 		{
 			SpecialWaveType = "fogWave";
-		};
-		case 2:
-		{
-			SpecialWaveType = "swticharooWave";
 		};
 	};
 	wavesSinceSpecial = 0;
 };
 
 if (specialWave && attkWave >= 10) then {
-	_randWave = floor random 8;
+	_randWave = floor random 6;
 	switch (_randWave) do
 	{
 		case 0:
@@ -119,48 +114,75 @@ if (specialWave && attkWave >= 10) then {
 		};
 		case 2:
 		{
-			SpecialWaveType = "swticharooWave";
+			SpecialWaveType = "bloaterRush";
 		};
 		case 3:
 		{
-			SpecialWaveType = "suicideWave";
+			SpecialWaveType = "nightWave";
 		};
 		case 4:
 		{
-			SpecialWaveType = "specMortarWave";
+			SpecialWaveType = "demineWave";
 		};
 		case 5:
 		{
-			SpecialWaveType = "nightWave";
-		};
-		case 6:
-		{
-			SpecialWaveType = "demineWave";
-		};
-		case 7:
-		{
-			SpecialWaveType = "defectorWave";
+			SpecialWaveType = "siegeWave";
 		};
 	};
 	wavesSinceSpecial = 0;
-//}else{
-	//SpecialWaveType = "swticharooWave"; //else for testing new special waves: do not remove
 };
 
-if (SpecialWaveType == "suicideWave") then {
-	suicideWave = true;
-	execVM "hostiles\suicideWave.sqf";
+// ── Bloater Rush (replaces vanilla suicideWave) ──
+// Sets flag for fn_buildWaveManifest to override with scaled Bloaters + T1.
+// DUAL TRIGGER: fires from special wave RNG pool OR from guaranteed recurrence
+// timer (every 5 waves after wave 10). Timer takes priority if both activate.
+private _bloaterRushCooldown = missionNamespace getVariable ["EJ_wavesSinceBloaterRush", 99];
+if (attkWave >= 10 AND { _bloaterRushCooldown >= 5 } AND { SpecialWaveType != "bloaterRush" }) then {
+	// Force bloater rush via recurrence timer, overriding whatever special was rolled
+	SpecialWaveType = "bloaterRush";
+	if (!specialWave) then {
+		specialWave = true;
+		wavesSinceSpecial = 0;
+	};
+	diag_log format ["[EJ] Forced bloater rush via recurrence timer (waves since last: %1)", _bloaterRushCooldown];
+};
+
+if (SpecialWaveType == "bloaterRush") then {
+	EJ_wbk_bloaterRush = true;
 	execVM "hostiles\suicideAudio.sqf";
 } else {
-	suicideWave = false;
+	EJ_wbk_bloaterRush = false;
 };
 
-if (SpecialWaveType == "specMortarWave") then {
-	specMortarWave = true;
-	[] execVM "hostiles\specMortar.sqf";
-}else{
-	specMortarWave = false;
+// ── Early Bloater Preview (wave 3 only) ──
+// A single bloater appears in wave 3 to introduce the breaching mechanic
+// before the formal bloater rush (wave 10+). One preview wave is enough —
+// wave 4 reverts to a normal mixed wave. From wave 5+ the normal tier
+// system handles bloater spawns (minWave = 5 in registry).
+if (attkWave == 3 && !EJ_wbk_bloaterRush) then {
+	EJ_wbk_earlyBloaterCount = 1;
+} else {
+	EJ_wbk_earlyBloaterCount = 0;
 };
+
+// ── Bloater Barricade PFH ──
+// Initialize bloater tracker and start the contextual targeting PFH.
+// The PFH checks alive bloaters for barricade obstructions each second.
+// Runs every wave (bloaters may appear in normal waves from T3 pool at wave 5+,
+// or from early preview at waves 3-4).
+EJ_activeBloaters = [];
+call EJ_fnc_bloaterBarricadePFH;
+
+// ── Siege Wave — guaranteed Smasher-heavy assault on fortifications ──
+if (SpecialWaveType == "siegeWave") then {
+	EJ_wbk_siegeWave = true;
+} else {
+	EJ_wbk_siegeWave = false;
+};
+
+suicideWave = false;
+
+specMortarWave = false;
 
 if (SpecialWaveType == "specCivs") then {
 	specCivs = true;
@@ -184,12 +206,7 @@ if (SpecialWaveType == "fogWave") then {
 	fogWave = false;
 };
 
-if (SpecialWaveType == "swticharooWave") then {
-	swticharooWave = true;
-	execVM "hostiles\specSwticharooWave.sqf";
-}else{
-	swticharooWave = false;
-};
+swticharooWave = false;
 
 if (SpecialWaveType == "demineWave") then {
 	demineWave = true;
@@ -199,20 +216,11 @@ if (SpecialWaveType == "demineWave") then {
 	demineWave = false;
 };
 
-if (SpecialWaveType == "defectorWave") then {
-	defectorWave = true;
-}else{
-	defectorWave = false;
-};
+defectorWave = false;
 
 //Notify start of wave and type of wave
-if (suicideWave) then {
-	["SpecialWarning",["SUICIDE BOMBERS! Don't Let Them Get Close!"]] remoteExec ["BIS_fnc_showNotification", 0];
-	["Alarm"] remoteExec ["playSound", 0];
-};
-
-if (specMortarWave) then {
-	["SpecialWarning",["MORTAR! FIND IT BEFORE IT DESTROYS THE BULWARK!"]] remoteExec ["BIS_fnc_showNotification", 0];
+if (EJ_wbk_bloaterRush) then {
+	["SpecialWarning",["BLOATER RUSH! Don't Let Them Get Close!"]] remoteExec ["BIS_fnc_showNotification", 0];
 	["Alarm"] remoteExec ["playSound", 0];
 };
 
@@ -231,48 +239,13 @@ if (fogWave) then {
 	["Alarm"] remoteExec ["playSound", 0];
 };
 
-if (swticharooWave) then {
-	["SpecialWarning",["You were overrun! Take back the bulwark!! Quickly!"]] remoteExec ["BIS_fnc_showNotification", 0];
-	["Alarm"] remoteExec ["playSound", 0];
-	_secCount = 0;
-	_deadUnconscious = [];
-	sleep 1;
-	while {EAST countSide allUnits > 0} do {
-		_allHCs = entities "HeadlessClient_F";
-		_allHPs = allPlayers - _allHCs;
-		{
-			if ((!alive _x) || ((lifeState _x) == "INCAPACITATED")) then {
-				_deadUnconscious pushBack _x;
-			};
-		} foreach _allHPs;
-		_respawnTickets = [west] call BIS_fnc_respawnTickets;
-		if (count (_allHPs - _deadUnconscious) <= 0 && _respawnTickets <= 0) then {
-			sleep 1;
-
-			//Check that Players have not been revived
-			_deadUnconscious = [];
-			{
-				if ((!alive _x) || ((lifeState _x) == "INCAPACITATED")) then {
-					_deadUnconscious pushBack _x;
-				};
-			} foreach _allHPs;
-			if (count (_allHPs - _deadUnconscious) <= 0 && _respawnTickets <= 0) then {
-				sleep 1;
-				if (count (_allHPs - _deadUnconscious) <= 0 && _respawnTickets <= 0) then {
-					missionFailure = true;
-				};
-			};
-		};
-	};
-};
-
 if (demineWave) then {
 	["SpecialWarning",["Look up! They're sending drones!"]] remoteExec ["BIS_fnc_showNotification", 0];
 	["Alarm"] remoteExec ["playSound", 0];
 };
 
-if (defectorWave) then {
-	["SpecialWarning",["NATO Defectors Are Attacking Us!"]] remoteExec ["BIS_fnc_showNotification", 0];
+if (EJ_wbk_siegeWave) then {
+	["SpecialWarning",["SIEGE! Heavy units targeting your fortifications!"]] remoteExec ["BIS_fnc_showNotification", 0];
 	["Alarm"] remoteExec ["playSound", 0];
 };
 

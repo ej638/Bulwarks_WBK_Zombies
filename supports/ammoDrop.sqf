@@ -23,25 +23,25 @@ if (pWeap != "") then {
         _ammoToAdd = selectRandom _ammoArray;
         _roundCount = getNumber (configFile >> "CfgMagazines" >> _ammoToAdd >> "Count");
         if (_roundCount <= 4) then {
-            _maxRounds = 15;
+            _maxRounds = 20;
         };
         if (_roundCount >= 5 && _roundCount <= 10) then {
-            _maxRounds = 25;
+            _maxRounds = 35;
         };
         if (_roundCount > 10 && _roundCount <= 40) then {
-            _maxRounds = 90;
+            _maxRounds = 120;
         };
         if (_roundCount > 40 && _roundCount <= 70) then {
-            _maxRounds = 150;
+            _maxRounds = 210;
         };
         if (_roundCount > 70 && _roundCount <= 100) then {
-            _maxRounds = 200;
-        };
-        if (_roundCount > 100 && _roundCount <= 150) then {
             _maxRounds = 300;
         };
+        if (_roundCount > 100 && _roundCount <= 150) then {
+            _maxRounds = 450;
+        };
         if (_roundCount > 150) then {
-            _maxRounds = 400;
+            _maxRounds = 600;
         };
         ammoPlayer addMagazines [_ammoToAdd, 1];
         _currentRounds = _currentRounds + _roundCount;

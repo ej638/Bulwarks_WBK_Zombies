@@ -1,142 +1,172 @@
 /**
 *  loot/lists
 *
-*  Populates global arrays with spawnable loot classes
+*  Hardcoded loot whitelist — only these items will spawn as loot.
+*  No config scanning or blacklist; edit arrays directly to change loot pool.
+*
+*  Weapon magazines are auto-resolved from CfgWeapons config at spawn time
+*  (spawnLoot.sqf uses getArray >> "magazines"), so they don't need separate entries.
 *
 *  Domain: Server
 **/
 
-_hats = [];
-_uniforms = [];
-_vests = [];
-_primaries = [];
-_secondaries = [];
-_launchers = [];
-_optics = [];
-_railAttach = [];
-_items = [];
-_mines = [];
-_backpacks = [];
-_glasses = [];
-_faces = [];
-_grenades = [];
-_charges = [];
-_count =  count (configFile >> "CfgWeapons");
-for "_x" from 0 to (_count-1) do {
-	_weap = ((configFile >> "CfgWeapons") select _x);
-	if (isClass _weap) then {
-		if (getnumber (_weap >> "scope") == 2) then {
-			if (isClass (_weap >> "ItemInfo")) then {
-				_infoType = (getnumber (_weap >> "ItemInfo" >> "Type"));
-				switch (_infoType) do {
-					case 605: {_hats = _hats + [configName _weap];};
-					case 801: {_uniforms = _uniforms + [configName _weap];};
-					case 701: {_vests = _vests + [configName _weap];};
-					case 201: {_optics = _optics + [configName _weap];};
-					case 301: {_railAttach = _railAttach + [configName _weap];};
-					case 601: {_items = _items + [configName _weap];};
-					case 620: {_items = _items + [configName _weap];}; // Toolkit
-					case 619: {_items = _items + [configName _weap];}; // Medikit
-					case 621: {_items = _items + [configName _weap];}; // UAV terminal
-					case 616: {_items = _items + [configName _weap];}; // NVG
-					case 401: {_items = _items + [configName _weap];}; // First Aid Kit
-				};
-			};
-			if (!isClass (_weap >> "LinkedItems")) then {
-				if (count(getarray (_weap >> "magazines")) !=0 ) then {
-					_type = getnumber (_weap >> "type");
-					switch (_type) do {
-						case 1: {_primaries = _primaries + [configName _weap];};
-						case 3: {_secondaries = _secondaries + [configName _weap];};
-						case 4: {_launchers = _launchers + [configName _weap];};
-					};
-				};
-			};
-			if ( isClass(_weap >> "LinkedItems" >> "LinkedItemsUnder") && !isClass(_weap >> "LinkedItems" >> "LinkedItemsAcc") && !isClass(_weap >> "LinkedItems" >> "LinkedItemsMuzzle") && !isClass(_weap >> "LinkedItems" >> "LinkedItemsOptic")) then {
-				if (count(getarray (_weap >> "magazines")) !=0 ) then {
-					_primaries = _primaries + [configName _weap];
-				};
-			};
-    };
-  };
-};
+// --- Hats (CfgWeapons, ItemInfo type 605) ---
+List_Hats = [
+    "H_Cap_blk_ION",
+    "H_Bandanna_gry",
+    "H_Bandanna_khk",
+    "H_Bandanna_camo",
+    "H_Beret_blk",
+    "H_Beret_Colonel",
+    "H_Booniehat_oli",
+    "H_Booniehat_tan",
+    "H_Cap_grn_BI",
+    "H_Cap_surfer",
+    "H_Hat_brown",
+    "H_MilCap_mcamo",
+    "H_Cap_headphones",
+    "H_Shemag_olive",
+    "H_StrawHat",
+    "H_HelmetLeaderO_oucamo",
+    "H_HelmetSpecO_ocamo",
+    "H_HelmetB_snakeskin",
+    "H_HelmetCrew_B",
+    "H_HelmetB_light_grass",
+    "H_HelmetB_desert"
+];
 
-_count =  count (configFile >> "CfgVehicles");
-for "_x" from 0 to (_count-1) do {
-    _item=((configFile >> "CfgVehicles") select _x);
-    if (isClass _item) then {
-        if (getnumber (_item >> "scope") == 2) then {
-            if (gettext (_item >> "vehicleClass") == "Backpacks") then {
-                _backpacks = _backpacks + [configname _item]
-            };
-        };
-    };
-};
+// --- Uniforms (CfgWeapons, ItemInfo type 801) ---
+List_Uniforms = [
+    "U_BG_leader",
+    "U_B_CombatUniform_mcam",
+    "U_B_CombatUniform_mcam_tshirt",
+    "U_I_OfficerUniform",
+    "U_I_CombatUniform_shortsleeve",
+    "U_C_Poloshirt_redwhite",
+    "U_C_Poloshirt_tricolour",
+    "U_B_CTRG_1",
+    "U_O_CombatUniform_ocamo",
+    "U_B_GhillieSuit",
+    "U_BG_Guerrilla_6_1",
+    "U_OrestesBody",
+    "U_O_OfficerUniform_ocamo",
+    "U_B_CombatUniform_mcam_vest",
+    "U_I_G_Story_Protagonist_F"
+];
 
-_count =  count (configFile >> "CfgGlasses");
-for "_x" from 0 to (_count-1) do {
-    _item=((configFile >> "CfgGlasses") select _x);
-    if (isClass _item) then {
-        if (getnumber (_item >> "scope") == 2) then {
-            _glasses = _glasses + [configName _item];
-        };
-    };
-};
-_count =  count (configFile >> "CfgFaces" >> "Man_A3");
-for "_x" from 0 to (_count-1) do {
-    _item=((configFile >> "CfgFaces" >> "Man_A3") select _x);
-    if (isClass _item) then {_faces = _faces + [configName _item];};
-};
+// --- Vests (CfgWeapons, ItemInfo type 701) ---
+List_Vests = [
+    "V_PlateCarrier2_blk",
+    "V_Chestrig_khk",
+    "V_PlateCarrierIA2_dgtl",
+    "V_HarnessOGL_brn",
+    "V_BandollierB_khk",
+    "V_TacVest_camo",
+    "V_PlateCarrier1_rgr"
+];
 
-_count =  count (configFile >> "CfgMagazines");
-for "_x" from 0 to (_count-1) do {
-    _item=((configFile >> "CfgMagazines") select _x);
-	if (isClass _item) then {
-		if(getNumber (_item >> "value") == 5) then {
-			if(["mine", getText (_item >> "displayName")] call BIS_fnc_inString) then {
-				_mines = _mines + [configName _item];
-			}
-		};
-	};
-};
+// --- Backpacks (CfgVehicles, vehicleClass "Backpacks") ---
+List_Backpacks = [
+    "B_AssaultPack_ocamo",
+    "B_Carryall_cbr",
+    "B_FieldPack_cbr",
+    "B_Kitbag_mcamo",
+    "B_TacticalPack_oli",
+    "B_AssaultPack_Kerry"
+];
 
-_count =  count (configFile >> "CfgMagazines");
-_chargeType = getText (configfile >> "CfgMagazines" >> "DemoCharge_Remote_Mag" >> "type");
-for "_x" from 0 to (_count-1) do {
-  _item=((configFile >> "CfgMagazines") select _x);
-	if (isClass _item) then {
-		if (gettext (_item >> "type") == _chargeType && ["remote", configName _item] call BIS_fnc_inString) then {
-			_charges = _charges + [configName _item];
-		};
-	};
-};
+// --- Primary Weapons (CfgWeapons, type 1) ---
+List_Primaries = [
+    "arifle_CTAR_ghex_F",        // CAR-95       → 30Rnd_580x42_Mag_F
+    "arifle_AK12_F",             // AK-12        → 30Rnd_762x39_Mag_F
+    "srifle_GM6_camo_F",         // GM6 Lynx     → 5Rnd_127x108_Mag
+    "LMG_03_F",                  // LIM-85       → 200Rnd_556x45_Box_F
+    "srifle_LRR_camo_F",         // M320 LRR     → 7Rnd_408_Mag
+    "srifle_EBR_F",              // Mk18 ABR     → 20Rnd_762x51_Mag
+    "arifle_Mk20_F",             // Mk20         → 30Rnd_556x45_Stanag
+    "LMG_Mk200_F",              // Mk200        → 200Rnd_65x39_cased_Box
+    "arifle_MX_SW_F",           // MX SW        → 100Rnd_65x39_caseless_mag
+    "arifle_MXC_khk_F",         // MXC          → 30Rnd_65x39_caseless_mag
+    "arifle_MXM_F",             // MXM          → 30Rnd_65x39_caseless_mag
+    "hgun_PDW2000_F",           // PDW2000      → 30Rnd_9x21_Mag
+    "srifle_DMR_01_F",          // Rahim        → 10Rnd_762x51_Mag
+    "arifle_SDAR_F",            // SDAR         → 30Rnd_556x45_Stanag, 20Rnd_556x45_UW_mag
+    "SMG_02_F",                  // Sting        → 30Rnd_9x21_Mag
+    "arifle_TRG21_F",           // TRG-21       → 30Rnd_556x45_Stanag
+    "arifle_ARX_hex_F",         // Type 115     → 30Rnd_65x39_caseless_green, 10Rnd_50BW_Mag_F
+    "SMG_01_F",                  // Vermin       → 30Rnd_45ACP_Mag_SMG_01
+    "LMG_Zafir_F",              // Zafir        → 150Rnd_762x51_Box
+    "SMG_03_black",              // ADR-97       → 50Rnd_570x28_SMG_03
+    "arifle_AKS_F",             // AKS-74U      → 30Rnd_545x39_Mag_F
+    "arifle_CTARS_ghex_F",      // CAR-95 GL    → 30Rnd_580x42_Mag_F
+    "arifle_Katiba_F",          // Katiba       → 30Rnd_65x39_caseless_green
+    "arifle_MX_GL_F"            // MX 3GL       → 30Rnd_65x39_caseless_mag, 3Rnd_HE_Grenade_shell
+];
 
-_count =  count (configFile >> "CfgMagazines");
-for "_x" from 0 to (_count-1) do {
-    _item=((configFile >> "CfgMagazines") select _x);
-	if (isClass _item) then {
-		if(getNumber (_item >> "type") == 16 || getNumber (_item >> "type") == 256) then {
-			if(["grenade", getText (_item >> "displayName")] call BIS_fnc_inString && !(["smoke", getText (_item >> "displayName")] call BIS_fnc_inString)) then {
-				_grenades = _grenades + [configName _item];
-			}
-		};
-	};
-};
+// --- Secondary Weapons (CfgWeapons, type 3) ---
+List_Secondaries = [
+    "hgun_Rook40_F",             // Rook-40      → 16Rnd_9x21_Mag
+    "hgun_Pistol_heavy_01_F",    // 4-five       → 11Rnd_45ACP_Mag
+    "hgun_ACPC2_F",              // ACP-C2       → 9Rnd_45ACP_Mag
+    "hgun_P07_F",                // P07          → 16Rnd_9x21_Mag
+    "hgun_Pistol_heavy_02_F"     // Zubr .45     → 6Rnd_45ACP_Cylinder
+];
 
-List_Hats = [] + _hats;
-List_Uniforms = [] + _uniforms;
-List_Vests = [] + _vests;
-List_Backpacks = [] + _backpacks;
-List_Primaries = [] + _primaries;
-List_Secondaries = [] + _secondaries;
-List_Launchers = [] + _launchers;
-List_Optics = [] + _optics + _railAttach;
-List_Items = [] + _items + ['ItemGPS','ItemCompass','ItemMap', 'ItemWatch', 'ItemRadio'];
-List_Mines = [] + _mines;
-List_Glasses = [] + _glasses;
-List_Faces = [] + _faces;
-List_Grenades = [] + _grenades;
-List_Charges = [] + _charges;
+// --- Launchers (CfgWeapons, type 4) ---
+List_Launchers = [
+    "launch_RPG7_F",             // RPG-7        → RPG7_F
+    "launch_RPG32_F",            // RPG-42       → RPG32_F, RPG32_HE_F
+    "launch_NLAW_F"              // PCML         → NLAW_F
+];
 
+// --- Optics & Attachments (CfgWeapons, ItemInfo type 201/301) ---
+List_Optics = [
+    "optic_MRCO",
+    "optic_DMS",
+    "optic_LRPS",
+    "optic_SOS",
+    "optic_Nightstalker",
+    "optic_NVS",
+    "optic_Hamr",
+    "optic_tws",
+    "optic_Arco"
+];
+
+// --- Items (CfgWeapons misc: FAK, Medikit, GPS, etc.) ---
+List_Items = [
+    "FirstAidKit",
+    "Medikit",
+    "ItemGPS",
+    "ItemCompass",
+    "ItemMap",
+    "ItemWatch",
+    "ItemRadio"
+];
+
+// --- Glasses (CfgGlasses) ---
+List_Glasses = [
+    "G_Aviator",
+    "G_Bandanna_aviator",
+    "G_Spectacles",
+    "G_Tactical_Black"
+];
+
+// --- Grenades (CfgMagazines — thrown explosives) ---
+List_Grenades = [
+    "HandGrenade",
+    "MiniGrenade"
+];
+
+// --- Mines (CfgMagazines — not used, kept empty for pool compatibility) ---
+List_Mines = [];
+
+// --- Charges (CfgMagazines — placed explosives) ---
+List_Charges = [
+    "DemoCharge_Remote_Mag",
+    "ClaymoreDirectionalMine_Remote_Mag",
+    "SatchelCharge_Remote_Mag"
+];
+
+// --- Composite Lists (consumed by editMe.sqf LOOT pools and spin box) ---
 List_AllWeapons = List_Primaries + List_Secondaries + List_Launchers;
 List_AllClothes = List_Hats + List_Uniforms + List_Glasses;

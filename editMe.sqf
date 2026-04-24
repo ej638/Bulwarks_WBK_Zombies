@@ -39,38 +39,13 @@ PLAYER_STARTNVG    = if ("PLAYER_STARTNVG" call BIS_fnc_getParamValue == 1) then
 RESPAWN_TIME = ("RESPAWN_TIME" call BIS_fnc_getParamValue);
 RESPAWN_TICKETS = ("RESPAWN_TICKETS" call BIS_fnc_getParamValue);
 
-/* Loot Blacklist */
-LOOT_BLACKLIST = [
-    "O_Static_Designator_02_weapon_F", // If players find and place CSAT UAVs they count as hostile units and round will not progress
-    "O_UAV_06_backpack_F",
-    "O_UAV_06_medical_backpack_F",
-    "O_UAV_01_backpack_F",
-    "B_IR_Grenade",
-    "O_IR_Grenade",
-    "I_IR_Grenade"
-];
-
-/* Whitelist modes */
-/* 0 = Off */
-/* 1 = Only Whitelist Items will spawn as loot */
-/* 2 = Whitelist items get added to existing loot (increases the chance of loot spawning */
+/* Loot Pools — sourced from hardcoded whitelist in loot/lists.sqf */
 LOOT_WHITELIST_MODE = 0;
-
-/* Loot Whitelists */
-/* Fill with classname arrays: ["example_item_1", "example_item_2"] */
-/* To use Whitelisting there MUST be at least one applicaple item in each LOOT_WHITELIST array*/
-LOOT_WHITELIST_WEAPON = [];
-LOOT_WHITELIST_APPAREL = [];
-LOOT_WHITELIST_ITEM = [];
-LOOT_WHITELIST_EXPLOSIVE = [];
-LOOT_WHITELIST_STORAGE = [];
-
-/* Loot Spawn */
-LOOT_WEAPON_POOL    = List_AllWeapons - LOOT_BLACKLIST;    // Classnames of Loot items as an array
-LOOT_APPAREL_POOL   = List_AllClothes + List_Vests - LOOT_BLACKLIST;
-LOOT_ITEM_POOL      = List_Optics + List_Items - LOOT_BLACKLIST;
-LOOT_EXPLOSIVE_POOL = List_Mines + List_Grenades + List_Charges - LOOT_BLACKLIST;
-LOOT_STORAGE_POOL   = List_Backpacks - LOOT_BLACKLIST;
+LOOT_WEAPON_POOL    = List_AllWeapons;
+LOOT_APPAREL_POOL   = List_AllClothes + List_Vests;
+LOOT_ITEM_POOL      = List_Optics + List_Items;
+LOOT_EXPLOSIVE_POOL = List_Mines + List_Grenades + List_Charges;
+LOOT_STORAGE_POOL   = List_Backpacks;
 
 /* Random Loot */
 LOOT_HOUSE_DISTRIBUTION = ("LOOT_HOUSE_DISTRIBUTION" call BIS_fnc_getParamValue);  // Every *th house will spwan loot.
@@ -154,3 +129,35 @@ if (DAY_TIME_FROM > DAY_TIME_TO) then {
 
 /* Starter MediKits */
 BULWARK_MEDIKITS = ("BULWARK_MEDIKIT" call BIS_fnc_getParamValue);
+
+/* WBK Bloater Barricade Damage */
+// Fraction of barricade HP removed per bloater explosion (0.0–1.0).
+// At 0.5: takes 2 bloaters to destroy a full-HP barricade.
+// Applies to all barricades within blast radius that have LOS to the explosion.
+EJ_BLOATER_BARRICADE_DAMAGE = 0.5;
+
+// Blast radius (metres) for barricade HP damage from a bloater explosion.
+// Matches the APERS mine visual/audio radius. Player splash is handled by the mine.
+EJ_BLOATER_BARRICADE_RADIUS = 10;
+
+// Distance (metres) at which a bloater detonates when approaching a barricade
+// that blocks its path to a player. Lower = bloater gets closer before exploding.
+// Set relative to the approach-point offset (2m) — 7m catches a bloater standing
+// flush against the outside of a 4m-wide wall whose origin is at its centre.
+EJ_BLOATER_DETONATE_RANGE = 7;
+
+// Seconds a bloater must be locked onto the same elevated breach target before
+// stall detonation fires. Applies only when within EJ_BLOATER_STALL_RANGE of
+// the structure. Prevents infinite circling at the base of guard towers/platforms.
+EJ_BLOATER_STALL_TIME = 8;
+
+// 2D radius (metres) from a breach target's base within which a stalled bloater
+// will detonate. Should exceed EJ_BLOATER_DETONATE_RANGE to catch elevated structures
+// (guard towers, platforms) whose centers the bloater cannot physically reach.
+EJ_BLOATER_STALL_RANGE = 10;
+
+/* WBK Barricade Survival Bonus */
+// Points awarded at wave end for barricades that took damage but survived.
+// Scales with damage taken: a barricade at 20% HP awards more than one at 80%.
+// Split equally among all alive players. Set to 0 to disable.
+EJ_BARRICADE_SURVIVAL_BONUS = 50;

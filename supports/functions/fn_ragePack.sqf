@@ -60,7 +60,7 @@ playSound ["rageSoundInternal", false];
     player removeEventHandler ["fired", _unlimitedAmmo];
     player setAmmo [currentWeapon player, 0];
     player setVariable ["RevByMedikit", false, true];
-    player setDamage 0.4;
+    player setDamage [0.4, false];  // array form bypasses HandleDamage EH
 
     titleText ["", "BLACK IN", 1];
 };

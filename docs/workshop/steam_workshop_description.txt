@@ -1,0 +1,82 @@
+[h1]Dynamic Bulwarks: WBK Zombies[/h1]
+
+[quote]One run begins in a market square. The next begins in a cramped apartment block with boarded windows and two magazines between the team. The city changes. The pressure does not.[/quote]
+
+[h2]What This Is[/h2]
+Dynamic Bulwarks is a wave-survival mission for Arma 3 built around a simple loop: spawn into a randomly selected city, scavenge what you can, build a defensive position around the Bulwark Box, and survive increasingly dangerous attack waves.
+
+This edition rebuilds that loop around [b]WebKnight's Zombies and Creatures[/b]. It is not a straight classname swap; the wave factory, scoring, revive flow, fortification pressure, multiplayer handling, and performance guardrails were all adapted so WBK's synthetic-HP infected work properly inside the Dynamic Bulwarks framework.
+
+[h2]Map And Porting Note[/h2]
+This release is currently built for [b]Altis[/b].
+
+The original Dynamic Bulwarks creators also published a guide on manually changing the mission to other maps here:
+[url=https://www.youtube.com/watch?v=TGO9gPLBUyo]How to manually change maps[/url]
+
+I have not personally tested that workflow yet for this WBK version, so non-Altis map ports should currently be treated as unverified.
+
+[h2]Check Parameters Before Starting[/h2]
+Before starting a session, hosts should open the mission [b]Parameters[/b] menu and tune the Bulwarks settings to taste. Loot spawn density, downtime between rounds, mission area size, special wave behavior, starting equipment, point values, and other core mission settings are exposed there, so it is worth checking them before your first run.
+
+[h2]Core Dynamic Bulwarks Features[/h2]
+[list]
+[*][b]Random city every run[/b] with configurable mission area size and time-of-day settings
+[*][b]Loot, build, defend[/b] gameplay loop with downtime between waves
+[*][b]Scavenge buildings[/b] for weapons, ammunition, gear, explosives, backpacks, and special loot
+[*][b]Point economy[/b] tied to combat performance, spent through the Bulwark Box shop
+[*][b]Base building[/b] with barricades, platforms, towers, bunkers, lights, storage, and static weapons
+[*][b]Support abilities[/b] including Recon UAV, Paratroopers, Missile CAS, Mine Cluster Shell, Rage Stimpack, Emergency Teleport, ARMAKART TM, and Predator Drone
+[*][b]Special loot events[/b] such as the Spin Box, Loot Drone, cash pickups, and the Satellite Dish that unlocks supports
+[*][b]Revive and recovery loop[/b] with bleedout, medikit support, and FAK-to-Medikit conversion at the Bulwark Box
+[*][b]Wave modifiers[/b] and intermission pacing that keep each defense run from feeling identical
+[/list]
+
+[h2]WBK Features Added In This Edition[/h2]
+[list]
+[*][b]Custom WBK wave factory[/b] with budget-based escalation, tiered infected selection, boss cooldowns, and drip-fed overflow spawning
+[*][b]Escalation across multiple infected roles[/b], from shamblers and runners up through bloaters, screamers, leapers, smashers, and Goliaths
+[*][b]Full zombies-only conversion[/b] of the mission flow, removing vanilla vehicle and soldier-wave content that did not fit the outbreak theme
+[*][b]New special waves[/b]: Bloater Rush and Siege Wave
+[*][b]Early bloater preview waves[/b] to teach barricade-breach pressure before the late game
+[*][b]Civilian infected presentation[/b] for a stronger outbreak atmosphere instead of repetitive CSAT kit
+[*][b]WBK-aware scoring and revive integration[/b] so zombie melee, special attacks, and kills interact correctly with the Bulwarks point and downed-player systems
+[*][b]Dedicated server and headless client compatibility[/b] for hit scoring, kill attribution, and multiplayer-safe event handling
+[*][b]WBK targeting, movement, idle recovery, and stuck cleanup tuning[/b] built specifically for dense urban fights
+[*][b]Performance scaling mode[/b] with dynamic zombie caps, spawn throttling, and reduced scheduler waste for better server behavior
+[*][b]Fortification overhaul[/b] with barricade structural HP, sell/refund repair loop, and wave-end survival bonuses for defenses that hold
+[*][b]Contextual bloater breaching[/b]: when a barricade blocks the path, the bloater will try to open it
+[*][b]Curated loot and QoL updates[/b] including whitelist-based loot pools (Mainly Vanilla only), better ammo counts, optional starting weapons, and automatic magazine pickup from loot containers
+[/list]
+
+[h2]WBK Addon Options And Difficulty Tuning[/h2]
+Players can further tune zombie difficulty through [b]WBK's addon options[/b]. Zombie health, special-infected durability, scream cooldowns, and other behavior can be adjusted there, so if the mission feels too punishing for solo or small-team runs you do not have to leave everything at the stock mod values.
+
+For my initial solo and 2-player playthroughs, I specifically nerfed [b]Smasher[/b] and [b]Goliath[/b] health so early runs felt survivable while I learned the pacing of the conversion. [b]Screamers[/b] can also be rough, so increasing their scream cooldown is recommended if you want a less oppressive early experience.
+
+These are the addon-option values I am currently using:
+
+[code]
+// WebKnight's Zombies
+force WBK_ZommbiesScreamerCoolParam = "45";
+force WBK_ZommbiesSmasherHealthParam = "500";
+force WBK_ZommbiesSmasherHealthParam_Acid = "500";
+force WBK_ZommbiesSmasherHealthParam_Hell = "500";
+force WBK_ZommbiesGoliathHealthParam = "1000";
+[/code]
+
+I will probably continue tuning these as I play through more runs, but they are a solid starting point if you want a better chance as a solo player or a 2-man team.
+
+[h2]Credits And Acknowledgements[/h2]
+This project stands on the work of two outstanding Arma creations.
+
+[list]
+[*][url=https://steamcommunity.com/sharedfiles/filedetails/?id=1402462003]Dynamic Bulwarks: Build - Defend - Survive[/url] by [b]Willtop[/b] and [b]omNomios[/b]
+[*][url=https://steamcommunity.com/workshop/filedetails/?id=2789152015]WebKnight's Zombies and Creatures[/url] by [b]WebKnight[/b]
+[*]WBK integration, zombie conversion, and mission adaptation by [b]EJ[/b]
+[/list]
+
+Huge thanks to [b]Willtop[/b] and [b]omNomios[/b] for creating Dynamic Bulwarks and sharing such a memorable mission with the Arma community. It is a genuinely excellent survival scenario and this project would not exist without the foundation they built.
+
+Huge thanks as well to [b]WebKnight[/b] for creating WebKnight's Zombies and Creatures and contributing one of the most distinctive zombie experiences available for Arma 3. The mod brings a huge amount of character, creativity, and technical work to the community, and this mission is far better because of it.
+
+[i]Every boarded doorway buys time, not safety.[/i]

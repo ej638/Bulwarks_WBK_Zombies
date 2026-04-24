@@ -1,0 +1,52 @@
+[h1]Initial Publication Changelog[/h1]
+
+[quote]The city is open. The dead have arrived.[/quote]
+
+[h2]Core Release[/h2]
+[list]
+[*]Released Dynamic Bulwarks rebuilt around WebKnight's Zombies and Creatures
+[*]Added a custom WBK adapter, wave factory, scoring bridge, and multiplayer-safe integration layer instead of a simple unit swap
+[*]Converted the mission into a zombies-only survival experience centered on scavenging, fortifying, and holding the Bulwark
+[*]Included the compatibility pass needed to make WBK synthetic-HP enemies work cleanly inside the Dynamic Bulwarks wave, scoring, revive, and loot systems
+[/list]
+
+[h2]New Gameplay and Wave Content[/h2]
+[list]
+[*]Added tiered infected escalation across shamblers, runners, bloaters, screamers, leapers, smashers, and Goliaths
+[*]Added Bloater Rush and Siege Wave special rounds
+[*]Added early bloater preview waves so breaching threats appear before the late game
+[*]Retuned civilian zombie visuals, spawn distances, movement behavior, and urban pursuit logic for outbreak-style pacing
+[/list]
+
+[h2]Fortifications and Breaching[/h2]
+[list]
+[*]Added barricade synthetic HP so player-built defenses can be worn down and destroyed
+[*]Added fortification survival bonuses at wave end for damaged defenses that hold
+[*]Fixed build-sell refunds so rebuilding and repair loops are viable
+[*]Added contextual bloater barricade targeting and explosion-based breaching
+[*]Restored real pressure against overbuilt positions so fortifications buy time instead of permanent safety
+[/list]
+
+[h2]Revive, Scoring, and Multiplayer[/h2]
+[list]
+[*]Bridged WBK melee damage into the Bulwarks revive system so regular zombie hits down players correctly
+[*]Stopped zombies from repeatedly dogpiling incapacitated players after a down
+[*]Added dedicated server and headless-client safe hit scoring, kill attribution, and last-scorer fallback logic
+[*]Added multiplayer-safe hit and kill handling for WBK enemies using synthetic HP and scripted damage
+[/list]
+
+[h2]Performance and AI Stability[/h2]
+[list]
+[*]Added Performance Mode with dynamic zombie caps based on hardware tier and player count
+[*]Reduced mission-script scheduler waste, tightened spawn throttling, and improved long-wave server stability
+[*]Added WBK-specific stuck detection, idle recovery, targeting refresh, and movement fixes for dense city environments
+[*]Improved zombie audio behavior so large groups sound like groups instead of a single misplaced horde source
+[/list]
+
+[h2]Loot and Quality of Life[/h2]
+[list]
+[*]Converted loot generation to curated whitelist pools for cleaner balance and lower mission-start overhead
+[*]Increased ammo counts for weapon loot, spin-box rewards, and ammo resupply
+[*]Added optional starting weapons on spawn and respawn
+[*]Added automatic pickup of compatible magazines when taking weapons from loot containers
+[/list]

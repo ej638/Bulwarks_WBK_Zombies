@@ -1,9 +1,9 @@
 onLoadMission = "dynamicBulwarks";
 onLoadIntro = "Defend yourself";
 onLoadName = "dynamicBulwarks";
-briefingName = "dynamicBulwarks";
-overviewText = "Survive by scavenging equipment, in a randomly selected city, against ever increasing waves of hostiles.";
-author = "Hilltop & omNomios";
+briefingName = "Dynamic Bulwarks with WBK's Zombies and Creatures";
+overviewText = "Survive by scavenging equipment, in a randomly selected city, against ever increasing waves of WBK's Zombies and Creatures.";
+author = "Hilltop & omNomios (and EJ for the WBK Integration)";
 overviewPicture = "preview.paa";
 
 loadScreen = "preview.paa";
@@ -40,6 +40,7 @@ class CfgFunctions
 	#include "area\Functions.hpp"
 	#include "build\Functions.hpp"
 	#include "hostiles\Functions.hpp"
+	#include "hostiles\wbk\Functions.hpp"
 	#include "loot\Functions.hpp"
 };
 
@@ -63,6 +64,14 @@ class CfgRemoteExec
 		class say3DGlobal {};
 		class createBlur {};
 		class suiExplode{};
+		class spawnWBKUnit{};
+		class wbkHitPartScore{};
+		class registerHitPartBridge{};
+		class initWBKRegistry{};
+		class buildWaveManifest{};
+		class spawnWBKWave{};
+		class bloaterBarricadePFH{};
+		class barricadeDestroyVFX{};
 	};
 };
 
@@ -185,6 +194,14 @@ class CfgNotifications
 
 class Params
 {
+	class PERFORMANCE_MODE
+	{
+		title = "Performance Mode (max simultaneous zombies)";
+		values[] = {1, 2, 3};
+		texts[] = {"Low (25 — budget hardware / large player count)", "Medium (40 — recommended for most servers)", "High (60 — dedicated server + headless client)"};
+		default = 2;
+	};
+
 	class HOSTILE_LABEL
 	{
 		title = "======= Wave Settings =======";
@@ -259,10 +276,10 @@ class Params
 
 	class PLAYER_STARTWEAPON
 	{
-		title = "Players start with pistol";
+		title = "Players start with weapons";
 		values[] = {0, 1};
 		texts[] = {"No", "Yes"};
-		default = 0;
+		default = 1;
 	};
 
 	class PLAYER_STARTNVG
@@ -497,7 +514,7 @@ class Params
 		title = "Tickets";
 		values[] = {0, 5, 10, 15, 20};
 		texts[] = {"0", "5", "10", "15", "20"};
-		default = 0;
+		default = 5;
 	};
 
 	class RESPAWN_TIME

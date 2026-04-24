@@ -8,11 +8,8 @@ if (!_buildPhase) then { // free respawn in build phase
 		publicVariable "RESPAWN_TIME";
 		[RESPAWN_TIME] remoteExec ["setPlayerRespawnTime", 0];
 	} else {
-    [0] remoteExec ["setPlayerRespawnTime", 0];
+    [RESPAWN_TIME] remoteExec ["setPlayerRespawnTime", 0];
   }
 };
 
-sleep 0.1;
-if(!isNull _player) then {
-    ["Initialize", [_player, [west], false, true, true, false, true, true, true, true]] call BIS_fnc_EGSpectator;
-};
+
