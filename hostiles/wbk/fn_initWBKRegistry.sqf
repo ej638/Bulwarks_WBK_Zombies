@@ -108,7 +108,7 @@ EJ_BUDGET_LATE_BONUS   = 2;     // Extra budget per wave beyond threshold (stack
 //  Scales all animation playback — movement AND attacks — so keep > 0.7.
 // ══════════════════════════════════════════════════════════
 
-EJ_RUNNER_ANIM_SPEED_COEF = 0.80;
+EJ_RUNNER_ANIM_SPEED_COEF = 0.70;
 
 // Sprint-boost duration (seconds) applied at spawn via forceSpeed 6.
 // After this many seconds, forceSpeed resets to -1 (natural WBK movement).
