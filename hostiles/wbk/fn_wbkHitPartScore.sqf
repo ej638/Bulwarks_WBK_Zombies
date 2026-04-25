@@ -51,6 +51,17 @@ private _scorer = if (isPlayer _shooter) then {
     };
 };
 
+// Paratrooper AI fallback: if the shooter is not a player, check if it is
+// an AI owned by a player (EJ_paraOwner). This covers WBK zombie kills by
+// paratroopers — WBK's setDamage 1 strips the instigator from MPKilled, so
+// EJ_lastScorer is the only reliable attribution path for these units.
+if (isNull _scorer) then {
+    private _owner = _shooter getVariable ["EJ_paraOwner", objNull];
+    if (!isNull _owner && {isPlayer _owner}) then {
+        _scorer = _owner;
+    };
+};
+
 if (isNull _scorer || !isPlayer _scorer) exitWith {};
 
 // --- Track last scorer for Killed EH fallback ---

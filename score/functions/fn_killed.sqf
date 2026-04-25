@@ -22,6 +22,16 @@ if (isServer) then {
         _instigator = _unit getVariable ["EJ_lastScorer", objNull];
     };
 
+    // Fallback: kill made by a paratrooper AI — attribute to the calling player
+    if (isNull _instigator || {!isPlayer _instigator}) then {
+        if (!isNull _instigator) then {
+            private _paraOwner = _instigator getVariable ["EJ_paraOwner", objNull];
+            if (!isNull _paraOwner && {isPlayer _paraOwner}) then {
+                _instigator = _paraOwner;
+            };
+        };
+    };
+
     if (isPlayer _instigator) then {
         _kilPointMulti = _unit getVariable "killPointMulti";
         [_instigator, (SCORE_KILL * _kilPointMulti)] call killPoints_fnc_add;
