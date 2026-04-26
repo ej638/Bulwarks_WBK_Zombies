@@ -56,6 +56,17 @@ PARATROOP_COUNT = ("PARATROOP_COUNT" call BIS_fnc_getParamValue);
 PARATROOP_CLASS = List_NATO;
 DEFECTOR_CLASS = List_NATO;
 
+/* Paratrooper whitelisted gear pools — sourced from loot/lists.sqf whitelists.
+ * loot/lists.sqf is fully loaded before editMe.sqf runs (see initServer.sqf).
+ * Edit the List_* arrays in loot/lists.sqf to change both loot and paratrooper gear. */
+PARA_UNIFORMS    = List_Uniforms;
+PARA_VESTS       = List_Vests;
+PARA_BACKPACKS   = List_Backpacks;
+PARA_PRIMARIES   = List_Primaries;
+PARA_SECONDARIES = List_Secondaries;
+PARA_HATS        = List_Hats;
+PARA_GLASSES     = List_Glasses;
+
 /* Points */
 SCORE_KILL = ("SCORE_KILL" call BIS_fnc_getParamValue);                 // Base Points for a kill
 SCORE_HIT = ("SCORE_HIT" call BIS_fnc_getParamValue);                   // Every Bullet hit that doesn't result in a kill

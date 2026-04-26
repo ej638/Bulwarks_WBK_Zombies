@@ -2200,7 +2200,7 @@ Two systems suppressed all feedback:
 1. **`WBK_CreateDamage` sub-lethal path** (`fn_initPlayerReviveBridge.sqf`): applies damage via `setDamage [val, false]` — the array form bypasses the `HandleDamage` EH and with it **all vanilla pain/screen effects** (blood vignette, redness). This is the dominant damage path for every zombie melee hit.
 
 2. **`HandleDamage` EH gates** return `0` on most branches (INCAPACITATED, RevByMedikit, environmental). On the non-lethal sub-threshold branch, `bis_fnc_reviveEhHandleDamage` is called but the vanilla redness effect still does not render because the EH chain returns a value before the engine's own visual code runs.
-
+https://app.klingai.com/global/
 ### Fix
 
 Two complementary effects — an immediate flash and a persistent red tint — together communicate both the instant of impact and the accumulated health deficit.
@@ -2270,3 +2270,116 @@ Covers engine-sourced damage (explosions, non-WBK projectiles).
 - **Persistent tint:** `ctrlSetBackgroundColor` + `ctrlCommit 0.4` on every hit (immediate) and every 1s (PFH poll). `damage player` is a single engine read per tick. Negligible overhead.
 - **PFH interval:** 1 s — far below the threshold for perceptible lag in the healing response.
 - No server involvement. No additional polling beyond the 1s tint PFH.
+
+---
+
+## Enhancement: Paratrooper Whitelisted Gear + Kill Score Attribution
+
+**Date:** 2026-04-25
+**Status:** Implemented
+
+### Problem
+
+Two related issues with the existing `paraDrop` support (1950 pts, 3 units):
+
+1. **Gear**: Paratroopers spawned with whatever the random `List_NATO` unit classname brought — uncontrolled loadouts with inconsistent weapons, ammo counts, and no whitelist governance.
+2. **Kill scoring**: Kills made by paratrooper AI were never attributed to the calling player. `fn_killed.sqf` only scored when `isPlayer _instigator`; AI-instigated kills silently awarded zero points.
+
+A third issue was also present: the existing `Killed` EH inside `fn_paraTroop.sqf` had a syntax bug — `removeAllWeapons _self:` (colon instead of semicolon), causing an SQF parser error on every paratrooper death.
+
+### Fix
+
+**Whitelist arrays (`editMe.sqf`):** Five new config globals added below `PARATROOP_CLASS`:
+
+| Array | Purpose |
+|---|---|
+| `PARA_UNIFORMS` | Outfit pool (vanilla A3 NATO combat uniforms) |
+| `PARA_VESTS` | Vest pool (plate carriers and tac vests) |
+| `PARA_BACKPACKS` | Backpack pool; swapped in after landing |
+| `PARA_PRIMARIES` | Primary weapon pool (rifles + LMGs) |
+| `PARA_SECONDARIES` | Sidearm pool |
+
+Magazine classnames are not hardcoded — derived at spawn time via `compatibleMagazines`, so the lists remain mod-compatible.
+
+**Spawn loop rewrite (`supports/functions/fn_paraTroop.sqf`):** The inner `for` loop body was replaced with:
+
+1. Full gear strip (`removeAllWeapons`, `removeAllItems`, `removeAllAssignedItems`, `removeUniform`, `removeVest`) before applying whitelisted loadout.
+2. Whitelisted outfit, vest, primary weapon + 1 starter mag, secondary weapon + 1 starter mag — all applied **before** `addBackpack "B_Parachute"` so the single starter mag fills uniform/vest slots and cannot overflow into the parachute (critical for large LMG box mags).
+3. `EJ_paraOwner` variable set on each unit (broadcast, `true`) so `fn_killed.sqf` can identify the calling player from a server context.
+4. Landing detection thread (`spawn`): polls altitude every 2s; on landing (`getPosATL < 1.5m`), swaps `B_Parachute` for a random `PARA_BACKPACKS` entry, then adds 4 more primary mags and 2 more secondary mags — totalling 5 primary / 3 secondary.
+5. Killed EH bug fixed: `removeAllWeapons _self:` → `removeAllWeapons _self;`.
+
+**Kill attribution (`score/functions/fn_killed.sqf`):** A third fallback tier was inserted after the existing `EJ_lastScorer` block and before the `if (isPlayer _instigator)` scoring gate:
+
+```sqf
+// Fallback: kill made by a paratrooper AI — attribute to the calling player
+if (isNull _instigator || {!isPlayer _instigator}) then {
+    if (!isNull _instigator) then {
+        private _paraOwner = _instigator getVariable ["EJ_paraOwner", objNull];
+        if (!isNull _paraOwner && {isPlayer _paraOwner}) then {
+            _instigator = _paraOwner;
+        };
+    };
+};
+```
+
+All three fallback tiers (WBK `EJ_lastScorer`, paratrooper `EJ_paraOwner`, direct player instigator) feed into the same existing scoring/hitmarker logic — no changes to scoring math were needed.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `editMe.sqf` | Added `PARA_UNIFORMS`, `PARA_VESTS`, `PARA_BACKPACKS`, `PARA_PRIMARIES`, `PARA_SECONDARIES` below `PARATROOP_CLASS` |
+| `supports/functions/fn_paraTroop.sqf` | Replaced for-loop body: full gear strip, whitelisted loadout, 1-mag descent load, `EJ_paraOwner` tag, landing-detection spawn thread for backpack swap + ammo top-up, Killed EH colon bug fixed |
+| `score/functions/fn_killed.sqf` | Added third fallback tier for `EJ_paraOwner` after `EJ_lastScorer` block |
+
+### New Global Variables
+
+| Variable | Set By | Scope | Purpose |
+|---|---|---|---|
+| `PARA_UNIFORMS` | `editMe.sqf` | Server + Client global | Whitelist of paratrooper outfit classnames |
+| `PARA_VESTS` | `editMe.sqf` | Server + Client global | Whitelist of paratrooper vest classnames |
+| `PARA_BACKPACKS` | `editMe.sqf` | Server + Client global | Whitelist of paratrooper backpack classnames (post-landing) |
+| `PARA_PRIMARIES` | `editMe.sqf` | Server + Client global | Whitelist of paratrooper primary weapon classnames |
+| `PARA_SECONDARIES` | `editMe.sqf` | Server + Client global | Whitelist of paratrooper sidearm classnames |
+| `EJ_paraOwner` | `fn_paraTroop.sqf` | Per-unit (`setVariable`, broadcast) | Reference to the player who called the paradrop; read by `fn_killed.sqf` for score attribution |
+
+### Performance Notes
+
+- Landing detection thread: one `spawn` per unit, polls every 2s, executes once on landing then exits. Zero recurring overhead after touchdown.
+- `compatibleMagazines` called once per weapon at spawn time, not recurrently.
+- `EJ_paraOwner` variable read in `fn_killed.sqf` only when `_instigator` is non-null and non-player — extremely low frequency.
+- No new PFHs. No new polling loops. VTOL cinematic unchanged.
+
+---
+
+## Hotfix: Paratrooper Kill Score — AI Hits Not Attributing to Player
+
+**Date:** 2026-04-25
+**Status:** Implemented
+
+### Problem
+
+Kills made by paratrooper AI units awarded zero points to the calling player.
+
+### Root Cause
+
+Two-stage blockade:
+
+**Stage 1 — `fn_wbkHitPartScore.sqf` exits early on AI hits:**
+The scorer resolver walks `_shooter → _shotParents[1] → _shotParents[0]`, checking `isPlayer` at each step. A paratrooper AI fails every check. The function exits at `if (isNull _scorer || !isPlayer _scorer) exitWith {}` without ever setting `EJ_lastScorer` on the zombie.
+
+**Stage 2 — `fn_killed.sqf`'s `EJ_paraOwner` fallback cannot fire:**
+WBK zombies die via scripted `setDamage 1`, which strips the instigator from the MPKilled event (`_instigator = objNull`). The `EJ_paraOwner` fallback added in the previous enhancement is guarded by `if (!isNull _instigator)` — with a null instigator the guard blocks it. Since Stage 1 also prevented `EJ_lastScorer` from being set, the attribution chain has no viable path.
+
+### Fix
+
+Extended the scorer resolver in `fn_wbkHitPartScore.sqf` with a paratrooper fallback block inserted **after** the existing player-resolver and **before** the `exitWith`. When `_scorer` is `objNull`, `_shooter` is checked for `EJ_paraOwner`. If found and the owner is a player, `_scorer` is set to that player. The function then proceeds normally, setting `EJ_lastScorer` on the zombie to the owner player. `fn_killed.sqf`'s existing `EJ_lastScorer` path handles the rest — no other files required changes.
+
+The `EJ_paraOwner` fallback tier in `fn_killed.sqf` remains in place and correctly handles non-WBK enemies where the AI instigator does survive through MPKilled.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_wbkHitPartScore.sqf` | Added paratrooper owner fallback after player-resolver: if `_scorer` is null, check `_shooter getVariable "EJ_paraOwner"` and use it as scorer |

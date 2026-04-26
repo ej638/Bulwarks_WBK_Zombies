@@ -65,20 +65,70 @@ if (count _targetPos == 0) then {
       mainZeus addCuratorEditableObjects [[_unit], true];
       sleep 0.3;
       waitUntil {!isNull _unit};
+
+      // Strip default class gear before applying whitelisted loadout
+      removeAllWeapons _unit;
+      removeAllItems _unit;
+      removeAllAssignedItems _unit;
+      removeUniform _unit;
+      removeVest _unit;
+      removeHeadgear _unit;
+      removeGoggles _unit;
+
+      // Select random whitelisted loadout
+      _selUniform   = selectRandom PARA_UNIFORMS;
+      _selVest      = selectRandom PARA_VESTS;
+      _selPrimary   = selectRandom PARA_PRIMARIES;
+      _selSecondary = selectRandom PARA_SECONDARIES;
+      _selHat       = selectRandom PARA_HATS;
+      _selGlasses   = selectRandom PARA_GLASSES;
+      _magPrimary   = selectRandom (compatibleMagazines _selPrimary);
+      _magSecondary = selectRandom (compatibleMagazines _selSecondary);
+
+      // Apply outfit, armour, weapons, and 1 starter mag each
+      // Mags added before backpack so they fill uniform/vest — no overflow into parachute
+      _unit forceAddUniform _selUniform;
+      _unit addVest _selVest;
+      _unit addHeadgear _selHat;
+      _unit addGoggles _selGlasses;
+      _unit addWeapon _selPrimary;
+      _unit addMagazines [_magPrimary, 1];
+      _unit addWeapon _selSecondary;
+      _unit addMagazines [_magSecondary, 1];
       _unit addBackpack "B_Parachute";
+
+      // Tag calling player for kill-score attribution (read by fn_killed.sqf)
+      _unit setVariable ["EJ_paraOwner", _player, true];
+
       _unit setSkill ["aimingAccuracy", 0.8];
       _unit setSkill ["aimingSpeed", 0.7];
       _unit setSkill ["aimingShake", 0.8];
       _unit setSkill ["spotTime", 1];
       _unit doMove _targetPos;
 
+      // On landing: swap parachute for whitelisted backpack and top up ammo
+      // Polls altitude every 2s — cheap, 3 units max, one-shot thread
+      [_unit, _magPrimary, _magSecondary] spawn {
+          params ["_u", "_magP", "_magS"];
+          private _landed = false;
+          while {alive _u && !_landed} do {
+              sleep 2;
+              if ((getPosATL _u select 2) < 1.5) then { _landed = true; };
+          };
+          if (alive _u) then {
+              removeBackpack _u;
+              _u addBackpack (selectRandom PARA_BACKPACKS);
+              _u addMagazines [_magP, 7];  // +7 = 8 total primary
+              _u addMagazines [_magS, 2];  // +2 = 3 total secondary
+          };
+      };
 
       _unit addEventHandler ["Killed", {
-      _self = _this select 0;
-      removeVest _self;
-      removeBackpack _self;
-      removeAllWeapons _self:
-      removeAllAssignedItems _self;
+          _self = _this select 0;
+          removeVest _self;
+          removeBackpack _self;
+          removeAllWeapons _self;
+          removeAllAssignedItems _self;
       }];
   };
 
