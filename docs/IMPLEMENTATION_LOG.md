@@ -2383,3 +2383,139 @@ The `EJ_paraOwner` fallback tier in `fn_killed.sqf` remains in place and correct
 | File | Change |
 |---|---|
 | `hostiles/wbk/fn_wbkHitPartScore.sqf` | Added paratrooper owner fallback after player-resolver: if `_scorer` is null, check `_shooter getVariable "EJ_paraOwner"` and use it as scorer |
+
+---
+
+## Enhancement: Loot Pool Mode Mission Parameter
+
+**Date:** 2026-04-26
+**Status:** Implemented
+
+### Summary
+
+Added a `LOOT_POOL_MODE` lobby parameter that lets mission hosts choose between the vanilla curated weapon whitelist (default, no DLC required) and a full config-scanned pool that includes all loaded DLC and mod weapons.
+
+Only `LOOT_WEAPON_POOL` is affected — apparel, items, explosives, and backpack pools remain vanilla in both modes, which avoids UAV terminals and dismantled/carry weapon variants that plagued the original Bulwarks scanner.
+
+### Mode 1 Scan Filters
+
+Three filters applied to every `CfgWeapons` class during the scan:
+
+| Filter | Purpose |
+|---|---|
+| `scope >= 2` | Public classes only — skips internal and placeholder entries |
+| `type in [1, 3, 4]` | Primary weapons, pistols, launchers only — excludes all equipment, binoculars, UAV components, static weapon parts |
+| `count magazines > 0` | Class must declare at least one compatible magazine — eliminates display-only and carry/disassembled weapon variants |
+
+The backpack pool is never scanned (no `CfgVehicles` scan), so `B_UavTerminal` and similar backpacks cannot appear regardless of mode.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `description.ext` | Added `class LOOT_POOL_MODE` (values 0/1) after `LOOT_SUPPLYDROP` in `class Params` |
+| `editMe.sqf` | Added `LOOT_POOL_MODE = ("LOOT_POOL_MODE" call BIS_fnc_getParamValue);` above existing `LOOT_WHITELIST_MODE` line |
+| `initServer.sqf` | Added scan hook after `waitUntil { scriptDone _hConfig }`: executes `loot\scanCfg.sqf` and blocks until complete when `LOOT_POOL_MODE == 1` |
+| `loot/spin/main.sqf` | `_weaponList = List_AllWeapons` → `_weaponList = LOOT_WEAPON_POOL` — spin box now follows the active pool |
+| `loot/scanCfg.sqf` | **New file** — server-side config scan; overwrites `LOOT_WEAPON_POOL` with filtered full weapon list; safety fallback to `List_AllWeapons` if scan returns empty; logs counts per category to RPT |
+
+### New Global Variables
+
+| Variable | Set By | Scope | Purpose |
+|---|---|---|---|
+| `LOOT_POOL_MODE` | `editMe.sqf` (from mission param) | Server | 0 = vanilla whitelist, 1 = full DLC/mod scan |
+
+### Performance Notes
+
+The scan runs once during the loading screen and completes before `EJ_fnc_initWBKRegistry` is called. At vanilla only (~200 CfgWeapons classes) the pass is sub-millisecond. With CUP + RHS loaded (~2000+ classes) it remains a single linear pass with no branching beyond three `getNumber`/`count` reads per class — still completes well within the loading screen window with no wave-time impact.
+
+---
+
+## Hotfix: scanCfg SQF Parser Failure (configClasses / continue)
+
+**Date:** 2026-04-26
+**Status:** Fixed
+
+### Problem
+
+Selecting "All weapons — includes DLC + mods" (LOOT_POOL_MODE 1) caused the following RPT errors at mission start:
+
+```
+Error Undefined variable in expression: configclasses
+Error Missing )
+File: loot\scanCfg.sqf, line 43
+```
+
+The error fired repeatedly (once per CBA XEH pass) and the scan never executed, leaving `LOOT_WEAPON_POOL` at its vanilla-default value from `editMe.sqf`.
+
+### Root Cause
+
+Line 43 of the original `scanCfg.sqf` was:
+
+```sqf
+} forEach (configClasses (configFile >> "CfgWeapons"));
+```
+
+The SQF parser failed to recognise `configClasses` as a command and treated it as an undefined variable. The cascading "Missing )" error followed because once `configClasses` was parsed as a variable name, the `(configFile >> "CfgWeapons")` expression became an orphaned operand with no valid operator.
+
+**Why did the parser misidentify `configClasses`?** The three `continue` statements in the forEach body were each inside nested `if () then { continue }` blocks — not directly in the loop body. When the SQF parser processes a `forEach` code block in a single pass, `continue` inside a nested `then {}` block appears to corrupt the parser's internal nesting-depth counter. This causes the parser to exit the `{ }` code block prematurely and attempt to parse `configClasses (configFile >> "CfgWeapons")` in an unexpected position (outside the `forEach` right-hand operand slot), at which point `configClasses` is not in a position where a command name is expected and is treated as an undefined variable.
+
+`configClasses` itself is a valid SQF command (added in Arma 3 v1.83, game is on v2.20). The command was never the problem; the `continue`-in-nested-block pattern was.
+
+### Fix
+
+Rewrote `loot/scanCfg.sqf` entirely avoiding both problematic patterns:
+
+| Before | After |
+|---|---|
+| `{ ... } forEach (configClasses (...))` | `for "_i" from 0 to (count _cfgWeapons - 1) do { ... select _i ... }` |
+| Three `if (cond) then { continue }` | Three nested `if (cond) then { ... }` blocks |
+| Em-dash (`—`) characters in comments | Plain ASCII `--` |
+
+`count config` + `config select index` + `for..do` is the most parser-safe config iteration pattern in SQF and has no known compatibility issues. The logic (three filters, pool building, fallback, diag_log) is identical.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `loot/scanCfg.sqf` | Complete rewrite: `configClasses`/`forEach`/`continue` replaced with `count`/`select`/`for..do`/nested `if..then`; non-ASCII characters removed from comments |
+
+---
+
+## Hotfix: scanCfg Non-Class Entry Warning + Pistol Type Mismatch
+
+**Date:** 2026-04-26
+**Status:** Fixed
+
+### Problems
+
+Two bugs found in `loot/scanCfg.sqf` after the first successful run with LOOT_POOL_MODE 1:
+
+1. **Warning in RPT:** `Warning Message: 'access/' is not a class ('scope' accessed)` fired once at mission start when the scan ran.
+2. **Silent data loss:** Diag log showed `Secondaries: 0` despite the game having many pistols in vanilla and DLC configs.
+
+### Root Cause — Warning
+
+`count (configFile >> "CfgWeapons")` returns the count of **all** child entries under `CfgWeapons`, including raw config properties (e.g. `access = 1`) declared at the `CfgWeapons` root level, not just weapon class definitions. When the loop hit the `access` property entry and called `getNumber (_class >> "scope")`, Arma 3 warned that the entry is not a class and therefore has no sub-properties to descend into. The `getNumber` returned 0 (failing the `>= 2` guard), so no bad data entered the pool — it was cosmetic but also a code correctness issue.
+
+**Fix:** Added `isClass _class` as the outermost guard. `isClass` returns `true` only for config class entries and `false` for raw property entries. This skips non-class entries before any property access occurs.
+
+### Root Cause — Secondaries: 0
+
+The type filter `[1, 3, 4]` used type 3 for pistols, but the actual Arma 3 `CfgWeapons` type numbering for handguns is **2**, not 3:
+
+| Type | Weapon category |
+|---|---|
+| 1 | Rifle / primary (all long guns, LMGs, SMGs) |
+| 2 | Handgun / pistol |
+| 4 | Launcher |
+
+Type 3 has no equippable weapons with magazines in vanilla A3 or the loaded DLC/mods. All vanilla pistols (`hgun_P07_F`, `hgun_Rook40_F`, etc.) passed the scope check but were silently rejected by `_type in [1, 3, 4]` — their actual config type is 2. WBK melee weapons (knife, pipe sword) also inherit from `Pistol_Base_F` (type 2) but are correctly excluded by the `magazines count > 0` filter regardless.
+
+**Fix:** Changed `[1, 3, 4]` → `[1, 2, 4]` and updated the `switch` block `case 3` → `case 2`.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `loot/scanCfg.sqf` | Added `isClass _class` outermost guard; changed type filter from `[1, 3, 4]` to `[1, 2, 4]`; updated `case 3` to `case 2` in switch block; updated header comment |
