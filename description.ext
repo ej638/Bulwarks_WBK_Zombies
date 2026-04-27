@@ -394,6 +394,14 @@ class Params
 		default = 25;
 	};
 
+	class LOOT_POOL_MODE
+	{
+		title = "Loot weapon pool";
+		values[] = {0, 1};
+		texts[] = {"Vanilla only — no DLC required", "All weapons — includes DLC + mods (default)"};
+		default = 1;
+	};
+
 	class DAY_TIME_FROM
 	{
 		title = "Earliest time of day";

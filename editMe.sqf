@@ -40,6 +40,7 @@ RESPAWN_TIME = ("RESPAWN_TIME" call BIS_fnc_getParamValue);
 RESPAWN_TICKETS = ("RESPAWN_TICKETS" call BIS_fnc_getParamValue);
 
 /* Loot Pools — sourced from hardcoded whitelist in loot/lists.sqf */
+LOOT_POOL_MODE      = ("LOOT_POOL_MODE" call BIS_fnc_getParamValue);  // 0 = vanilla whitelist, 1 = scan all DLC/mods (weapons only)
 LOOT_WHITELIST_MODE = 0;
 LOOT_WEAPON_POOL    = List_AllWeapons;
 LOOT_APPAREL_POOL   = List_AllClothes + List_Vests;

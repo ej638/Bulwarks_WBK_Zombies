@@ -129,7 +129,9 @@ List_Optics = [
     "optic_NVS",
     "optic_Hamr",
     "optic_tws",
-    "optic_Arco"
+    "optic_Arco",
+    "optic_Aco",
+    "optic_Holosight"
 ];
 
 // --- Items (CfgWeapons misc: FAK, Medikit, GPS, etc.) ---

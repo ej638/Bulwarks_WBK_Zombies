@@ -15,6 +15,12 @@ waitUntil {
 _hConfig   = [] execVM "editMe.sqf";
 waitUntil { scriptDone _hConfig };
 
+// Expand weapon pool to all DLC + loaded mods if host enabled it
+if (LOOT_POOL_MODE == 1) then {
+    _hScan = [] execVM "loot\scanCfg.sqf";
+    waitUntil { scriptDone _hScan };
+};
+
 // ── WBK Integration: initialise unit registry and budget system ──
 [] call EJ_fnc_initWBKRegistry;
 
