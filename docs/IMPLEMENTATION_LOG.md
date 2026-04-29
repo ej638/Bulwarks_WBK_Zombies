@@ -2519,3 +2519,75 @@ Type 3 has no equippable weapons with magazines in vanilla A3 or the loaded DLC/
 | File | Change |
 |---|---|
 | `loot/scanCfg.sqf` | Added `isClass _class` outermost guard; changed type filter from `[1, 3, 4]` to `[1, 2, 4]`; updated `case 3` to `case 2` in switch block; updated header comment |
+
+---
+
+## Hotfix: Wave Budget Rebalance — Solo-Friendly Early Progression
+
+**Date:** 2026-04-29
+**Status:** Implemented, pending in-game test
+
+### Problem
+
+Solo players faced overwhelming zombie hordes too early. By wave 4 a solo player already encountered ~16 T1 zombies simultaneously — requiring aggressive base-building investment just to survive, and risking ammo starvation from the outset. The goal of reaching the Goliath (wave 15+) was not achievable for most solo or small-group players. With 2–3 friends it was manageable but still felt heavy.
+
+The root cause was the linear ramp (`EJ_BUDGET_WAVE_SCALE = 4`) being too steep in the early game and the late-game acceleration bonus (`EJ_BUDGET_LATE_BONUS = 2`) too shallow to compensate. The budget curves looked like:
+
+| Wave | Old Budget (solo) | Old T1 Count |
+|------|-------------------|--------------|
+| 4    | 16                | ~16          |
+| 10   | 40                | ~24 (after T1 cap) |
+| 15   | 70                | varies       |
+
+### Fix
+
+Adjusted three budget constants to produce a slower early ramp that steepens substantially in the mid-to-late game. The two curves cross at wave 13–14, meaning endgame balance is equivalent or slightly harder while the critical early waves (1–9) are substantially easier.
+
+**Constants changed** (Spec §2.3):
+
+| Constant | Old Value | New Value | Rationale |
+|---|---|---|---|
+| `EJ_BUDGET_WAVE_SCALE` | `4` | `2.5` | Reduces per-wave ramp by 37.5% |
+| `EJ_BUDGET_LATE_THRESHOLD` | `10` | `9` | Late-game bonus activates 1 wave earlier |
+| `EJ_BUDGET_LATE_BONUS` | `2` | `5` | Steeper mid/late acceleration to compensate |
+
+**Budget formula reminder:** `Budget = (wave-1)*WAVE_SCALE + max(0, wave-LATE_THRESHOLD)*LATE_BONUS + playerCount*PLAYER_SCALE`
+
+**Wave-by-wave impact (solo, 1p budget):**
+
+| Wave | Old Budget | New Budget | ∆ | Est. T1 Zombies (new) |
+|------|------------|------------|---|-----------------------|
+| 1    | 4          | 4          | 0% | 4 |
+| 2    | 8          | 6          | −25% | 6 |
+| 3    | 12         | 9          | −25% | Bloater preview + 1 T1 |
+| **4** | **16** | **11** | **−31%** | **~11** |
+| 5    | 20         | 14         | −30% | ~6 (T3 costs 8) |
+| 6    | 24         | 16         | −33% | ~8 |
+| 7    | 28         | 19         | −32% | ~11 |
+| 8    | 32         | 21         | −34% | ~13 |
+| 9    | 36         | 24         | −33% | ~16 |
+| 10   | 40         | 31         | −22% | ~23 |
+| 12   | 44         | 40         | −9% | ~20 (T1 cap 50%) |
+| 13   | 46         | 45         | −2% | ~20 (cap) |
+| **15** | **70** | **69** | **−1%** | **Goliath (cost 60) reachable ✓** |
+| 20   | 100        | 106        | +6% | varies |
+
+Goliath is still reachable solo at wave 15: budget 69 ≥ cost 60. ✓
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_initWBKRegistry.sqf` | `EJ_BUDGET_WAVE_SCALE` 4→2.5; `EJ_BUDGET_LATE_THRESHOLD` 10→9; `EJ_BUDGET_LATE_BONUS` 2→5; updated comments |
+
+### Global Variables Changed
+
+| Variable | Old | New | Effect |
+|---|---|---|---|
+| `EJ_BUDGET_WAVE_SCALE` | `4` | `2.5` | −37.5% early ramp |
+| `EJ_BUDGET_LATE_THRESHOLD` | `10` | `9` | Late bonus starts at wave 10 instead of 11 |
+| `EJ_BUDGET_LATE_BONUS` | `2` | `5` | +3 extra budget per late wave |
+
+### Player Count Scaling Note
+
+`HOSTILE_TEAM_MULTIPLIER` defaults to `0.5` (50 in mission params), which means solo and groups up to 2 players compute identical budgets. Groups of 3 are also only 1 extra budget unit (floor(3×0.5)=1). Players wanting harder group scaling can raise this parameter in the mission lobby. This was left unchanged — the rebalance targets the absolute budget values, which affect all group sizes equally.

@@ -375,7 +375,7 @@ class Params
 		title = "Loot distribution";
 		values[] = {1, 2, 3, 4};
 		texts[] = {"Every building", "Every second building", "Every third building", "Every fourth building"};
-		default = 2;
+		default = 1;
 	};
 
 	class LOOT_ROOM_DISTRIBUTION
