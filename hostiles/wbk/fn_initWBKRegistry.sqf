@@ -91,15 +91,15 @@ EJ_SPAWN_BOSS_DELAY    = 2.0;   // Extra delay after T4/T5 unit
 // ══════════════════════════════════════════════════════════
 //  BUDGET FORMULA PARAMETERS — Spec §2.3 (Late-Game Escalation)
 //  Budget = base + (wave-1)*waveScale + max(0,wave-lateThreshold)*lateBonusScale + players*playerScale
-//  Wave 1 solo ≈ 4 zombies; linear +4/wave early, accelerates +6/wave after threshold.
-//  Late-game bonus ensures budget can support Goliath+Smasher combos by wave 18-20.
+//  Wave 1 solo ≈ 4 zombies; linear +2.5/wave early, accelerates +7.5/wave after threshold (wave 9+).
+//  Late-game bonus ensures budget can support Goliath+Smasher combos by wave 15-18.
 // ══════════════════════════════════════════════════════════
 
 EJ_BUDGET_BASE         = 0;     // No fixed floor — wave 1 is a warmup
-EJ_BUDGET_WAVE_SCALE   = 4;     // Budget added per wave (applied from wave 2)
+EJ_BUDGET_WAVE_SCALE   = 2.5;   // Budget added per wave (reduced from 4 for solo-friendly early game)
 EJ_BUDGET_PLAYER_SCALE = 4;     // Budget added per player (raised from 3)
-EJ_BUDGET_LATE_THRESHOLD = 10;  // Wave after which late-game acceleration kicks in
-EJ_BUDGET_LATE_BONUS   = 2;     // Extra budget per wave beyond threshold (stacks with waveScale)
+EJ_BUDGET_LATE_THRESHOLD = 9;   // Wave after which late-game acceleration kicks in (lowered from 10)
+EJ_BUDGET_LATE_BONUS   = 5;     // Extra budget per wave beyond threshold (raised from 2; steeper mid/late ramp)
 
 // ══════════════════════════════════════════════════════════
 //  MOVEMENT TUNING
