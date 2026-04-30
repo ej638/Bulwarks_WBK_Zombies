@@ -27,6 +27,13 @@ params ["_waveNum", "_playerCount", ["_multiplierBase", 1]];
 // ── Signal: spawning in progress ──
 EJ_wbkSpawnComplete = false;
 
+// ── Clear any stale overflow from the previous wave ──
+// EJ_spawnQueue accumulates overflow across waves; reset here to ensure
+// drip-feed entries from a prior wave don't bleed into the new one.
+// If the previous drip-feed PFH is still running, it will hit an empty
+// queue on its next tick, self-remove, and set EJ_dripFeedHandler = -1.
+EJ_spawnQueue = [];
+
 // ── Build the manifest via top-down budget allocation ──
 private _manifest = [_waveNum, _playerCount] call EJ_fnc_buildWaveManifest;
 
@@ -73,11 +80,20 @@ EJ_currentWaveGroup = _waveGroup;
             _overflow pushBack _x;
         } else {
             // ── Resolve spawn position — outside bulwark perimeter ──
+            // waterMode=0 (land only) prevents water-edge spawns that produce
+            // zombies running parallel to the zone along the shoreline.
+            // Ring: +30 to +55 from BULWARK_RADIUS — pushed out from old +15/+40
+            // so spawns clear the zone perimeter with more margin.
             private _pos = [bulwarkCity,
-                BULWARK_RADIUS + 15,
-                BULWARK_RADIUS + 40,
-                1, 0
+                BULWARK_RADIUS + 30,
+                BULWARK_RADIUS + 55,
+                0, 0
             ] call BIS_fnc_findSafePos;
+            // Validate: BIS_fnc_findSafePos returns [0,0,0] or the input
+            // center on failure. Fall back to a computed perimeter position.
+            if (_pos isEqualTo [0,0,0] || { (_pos distance2D bulwarkCity) < BULWARK_RADIUS }) then {
+                _pos = bulwarkCity getPos [BULWARK_RADIUS + 30, random 360];
+            };
 
             // ── Spawn via Phase 1 Core Adapter (shared group) ──
             [_pos, _class, _pointMulti, _waveGroup] call EJ_fnc_spawnWBKUnit;
@@ -132,10 +148,13 @@ EJ_currentWaveGroup = _waveGroup;
                 _entry params ["_class", "_pointMulti"];
 
                 private _pos = [bulwarkCity,
-                    BULWARK_RADIUS + 15,
-                    BULWARK_RADIUS + 40,
-                    1, 0
+                    BULWARK_RADIUS + 30,
+                    BULWARK_RADIUS + 55,
+                    0, 0
                 ] call BIS_fnc_findSafePos;
+                if (_pos isEqualTo [0,0,0] || { (_pos distance2D bulwarkCity) < BULWARK_RADIUS }) then {
+                    _pos = bulwarkCity getPos [BULWARK_RADIUS + 30, random 360];
+                };
 
                 // Use current wave group if still alive, else create new one
                 private _grp = if (!isNull EJ_currentWaveGroup) then {

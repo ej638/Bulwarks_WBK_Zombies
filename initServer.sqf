@@ -15,6 +15,22 @@ waitUntil {
 _hConfig   = [] execVM "editMe.sqf";
 waitUntil { scriptDone _hConfig };
 
+// ── WBK Integration: mission param overrides for WBK difficulty ──
+// Overwrites CBA preInit defaults before any wave spawns.
+// WBK AI scripts read these globals at unit spawn time (HP params).
+// Screamer cooldown and headshot multiplier are read at ability-fire time.
+WBK_Zombies_RunnerHP         = "WBK_T1_HP"               call BIS_fnc_getParamValue;
+WBK_Zombies_MiddleHP         = "WBK_T1_HP"               call BIS_fnc_getParamValue;
+WBK_Zombies_BloaterHP        = "WBK_BLOATER_HP"          call BIS_fnc_getParamValue;
+WBK_Zombies_LeaperHP         = "WBK_LEAPER_HP"           call BIS_fnc_getParamValue;
+WBK_Zombies_ScreamerHP       = "WBK_SCREAMER_HP"         call BIS_fnc_getParamValue;
+WBK_Zombies_ScreamerCooldown = "WBK_SCREAMER_COOLDOWN"   call BIS_fnc_getParamValue;
+WBK_Zombies_SmasherHP        = "WBK_SMASHER_HP"          call BIS_fnc_getParamValue;
+WBK_Zombies_SmasherHP_Acid   = "WBK_SMASHER_HP"          call BIS_fnc_getParamValue;
+WBK_Zombies_SmasherHP_Hell   = "WBK_SMASHER_HP"          call BIS_fnc_getParamValue;
+WBK_Zombies_GoliathHP        = "WBK_GOLIATH_HP"          call BIS_fnc_getParamValue;
+WBK_Zombies_HeadshotMP       = "WBK_HEADSHOT_MULTIPLIER" call BIS_fnc_getParamValue;
+
 // Expand weapon pool to all DLC + loaded mods if host enabled it
 if (LOOT_POOL_MODE == 1) then {
     _hScan = [] execVM "loot\scanCfg.sqf";
