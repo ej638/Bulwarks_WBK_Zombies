@@ -562,7 +562,7 @@ class Params
 		title = "Zombie HP — Shamblers and Runners";
 		values[] = {20, 40, 60, 80, 100, 150};
 		texts[] = {"20 (Very Easy)", "40 (Near Mod Default)", "60 (Recommended)", "80 (Hard)", "100 (Very Hard)", "150 (Brutal)"};
-		default = 40;
+		default = 60;
 	};
 
 	class WBK_BLOATER_HP

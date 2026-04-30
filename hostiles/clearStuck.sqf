@@ -115,9 +115,22 @@ while {true} do {
             } forEach _allHPs;
             if (!isNull _nearPlayer) then {
               _wbkUnit reveal [_nearPlayer, 4];
-              _wbkUnit doMove (getPos _nearPlayer);
-              diag_log format ["[EJ] Stuck WBK zombie recovery: %1 — doMove toward player at %2m",
-                typeOf _wbkUnit, round _bestDist];
+              // Randomise the doMove target to a point 10-20m from the player
+              // at a random bearing, rather than the exact player position.
+              // The exact position tends to route through the same navmesh path
+              // every time (building-corner gravity well), so a random offset
+              // forces a different route. If the zombie moves >3m, the strike
+              // resets; if not, strike 2 kills it 30s later.
+              private _recoverRadius = 10 + (random 10);
+              private _recoverBearing = random 360;
+              private _recoverTarget = (getPos _nearPlayer) vectorAdd [
+                (sin _recoverBearing) * _recoverRadius,
+                (cos _recoverBearing) * _recoverRadius,
+                0
+              ];
+              _wbkUnit doMove _recoverTarget;
+              diag_log format ["[EJ] Stuck WBK zombie recovery: %1 — doMove offset %2m from player (at %3m)",
+                typeOf _wbkUnit, round _recoverRadius, round _bestDist];
             };
           };
         } else {

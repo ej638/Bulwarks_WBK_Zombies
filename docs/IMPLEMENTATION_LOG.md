@@ -2698,3 +2698,59 @@ All HP globals are consumed at unit spawn time (`setVariable ["WBK_SynthHP", ...
 ### Performance Note
 
 Six additional scalar assignments at server startup. No runtime cost.
+
+---
+
+## Hotfix: Stuck Corner Gravity Well + Wrong-Direction Spawns + Water Spawn Fix
+
+**Date:** 2026-04-29
+**Status:** Implemented
+
+### Problems
+
+**Problem 1 — Building corner "gravity well" (observed wave 13):**
+A zombie stood stationary at a building corner. The stuck checker issued a recovery `doMove` — to the exact player position — which the Arma navmesh routed to the same corner (the nearest accessible exterior point with the player behind that building). The zombie didn't move, got killed at strike 2. A second zombie then independently navigated to the same corner via its own `_loopPathfindDoMove` PFH and received the same stuck-recovery order, going to the same spot.
+
+**Problem 2 — Zombies running away / parallel to zone (observed wave 14):**
+5 of the spawned zombies ran away from or parallel to the zone boundary rather than inward. Visible as sustained wrong-direction movement during the `forceSpeed 6` sprint window (20 seconds).
+
+### Root Cause
+
+**Gravity well:** All movement sources — `moveHosToPlayer` (15s), WBK `_loopPathfindDoMove` PFH (4-7s), and `clearStuck.sqf` strike-1 recovery — all issue `doMove (getPos _nearPlayer)`. When the player is behind a building, the navmesh terminates at the corner on every route. Subsequent doMove orders from all sources re-select the same corner. The stuck recovery was therefore issuing the same order that caused the stall, making it a no-op.
+
+**Wrong-direction spawns — primary:** `BIS_fnc_findSafePos` was called with `waterMode=1` (land or water allowed). When the spawn ring (`BULWARK_RADIUS + 15` to `BULWARK_RADIUS + 40`) intersected a coastal or riverine city boundary, some spawn positions fell on water or the water's edge. Water has no Arma navmesh, so a zombie there would pathfind along the water's edge — exactly the "running parallel" behaviour. The `forceSpeed 6` sprint for 20 seconds amplified any wrong-direction movement into a very visible arc.
+
+**Wrong-direction spawns — secondary:** `WBK_AI_LastKnownLoc` is set on the first valid `_loopPathfindDoMove` tick and only updated when the target moves >8m (`WBK_Zombies_TargetPosChanged`). A zombie locked onto a bad navmesh path won't be corrected by the PFH until the player relocates.
+
+**Latent drip-feed bug:** `EJ_spawnQueue` was never reset at wave start — only initialised once at mission start in `fn_initWBKRegistry`. If a prior wave's drip-feed PFH were removed before the queue drained (edge case), stale entries would carry into the next wave and spawn silently at the wrong time.
+
+### Fixes
+
+**A — Stuck recovery: randomised doMove offset (`hostiles/clearStuck.sqf`)**
+
+Strike-1 recovery now targets a point 10–20m from the player at a random bearing, rather than the exact player position. This forces a different navmesh path on each recovery attempt — the corner gravity well can only trap a zombie if every attempted bearing happens to route the same way, which is geometrically unlikely. If the zombie moves >3m, the strike resets; if not, strike 2 kills it 30s later.
+
+**B — Water spawn fix + spawn ring push-out (`hostiles/wbk/fn_spawnWBKWave.sqf`)**
+
+- `waterMode` changed from `1` (land+water) to `0` (land only) in both `BIS_fnc_findSafePos` calls (immediate spawn loop and drip-feed PFH). This eliminates water-edge spawns.
+- Spawn ring inner radius: `BULWARK_RADIUS + 15` → `BULWARK_RADIUS + 30`. Outer radius: `BULWARK_RADIUS + 40` → `BULWARK_RADIUS + 55`. The 25m ring width is unchanged but pushed 15m further from the bulwark perimeter, reducing the chance of the ring intersecting the city interior where the navmesh is tightest.
+- Added spawn position validation after each `BIS_fnc_findSafePos` call: if the returned position is `[0,0,0]` (failure) or inside `BULWARK_RADIUS` from `bulwarkCity` (bad fallback), a computed fallback position at `bulwarkCity getPos [BULWARK_RADIUS + 30, random 360]` is used.
+
+**C — Drip-feed queue reset (`hostiles/wbk/fn_spawnWBKWave.sqf`)**
+
+`EJ_spawnQueue = []` added at the top of `fn_spawnWBKWave` (before manifest build). If the previous wave's drip-feed PFH is still running, it hits an empty queue on its next tick, self-removes, and sets `EJ_dripFeedHandler = -1`. Closes the latent stale-carry-over bug.
+
+### Performance
+
+- Recovery doMove: one `vectorAdd` + `getPos` per struck zombie per 30s cycle. Negligible.
+- `BIS_fnc_findSafePos` with `waterMode=0`: land-only search may take marginally longer in sparse terrain but executes off the wave-critical path (inside the `spawn` block). No impact at wave scale.
+- Spawn ring push-out: no runtime cost change — same `findSafePos` call, different arguments.
+- Queue reset: one array assignment per wave start.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/clearStuck.sqf` | Strike-1 recovery: `doMove (getPos _nearPlayer)` → randomised 10–20m offset at random bearing around player |
+| `hostiles/wbk/fn_spawnWBKWave.sqf` | `EJ_spawnQueue = []` at wave start; both `BIS_fnc_findSafePos` calls: `waterMode` 1→0, ring +15/+40 → +30/+55; added `[0,0,0]` / inside-radius validation with computed fallback |
+| `docs/IMPLEMENTATION_LOG.md` | This entry |

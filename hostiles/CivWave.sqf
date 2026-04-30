@@ -39,6 +39,13 @@ for [{_i=0}, {_i<20}, {_i=_i+1}] do {
   _civUnit = _civgroup createUnit [_civClass, _civRoom, [], 0.5, "FORM"];
   mainZeus addCuratorEditableObjects [[_civUnit], true];
   _civUnit addEventHandler ["Killed", killPoints_fnc_civKilled];
+  // Prevent civ AI from entering COMBAT mode and triggering bis_fnc_cp_main,
+  // a BIS cover-point function that is undefined without an AI module placed.
+  // AUTOTARGET stops enemy detection; TARGET disables acquisition; FSM disables
+  // the AI state machine that calls it. doMove still works without these.
+  _civUnit disableAI "AUTOTARGET";
+  _civUnit disableAI "TARGET";
+  _civUnit disableAI "FSM";
   _spawnedCivs pushBack _civUnit;
 };
 
