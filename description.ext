@@ -541,4 +541,84 @@ class Params
 		default = 1;
 	};
 
+	class WBK_LABEL_SPACE
+	{
+		title = " ";
+		values[] = {0};
+		texts[] = {""};
+		default = 0;
+	};
+
+	class WBK_LABEL
+	{
+		title = "====== WBK Zombie Settings =====";
+		values[] = {0};
+		texts[] = {""};
+		default = 0;
+	};
+
+	class WBK_T1_HP
+	{
+		title = "Zombie HP — Shamblers and Runners";
+		values[] = {20, 40, 60, 80, 100, 150};
+		texts[] = {"20 (Very Easy)", "40 (Near Mod Default)", "60 (Recommended)", "80 (Hard)", "100 (Very Hard)", "150 (Brutal)"};
+		default = 40;
+	};
+
+	class WBK_BLOATER_HP
+	{
+		title = "Bloater HP";
+		values[] = {40, 60, 80, 90, 120, 200};
+		texts[] = {"40 (Easy)", "60", "80 (Mod Default)", "90 (Recommended)", "120 (Hard)", "200 (Very Hard)"};
+		default = 90;
+	};
+
+	class WBK_LEAPER_HP
+	{
+		title = "Leaper HP";
+		values[] = {50, 90, 120, 180, 250, 400};
+		texts[] = {"50 (Easy)", "90 (Recommended)", "120 (Mod Default)", "180 (Hard)", "250 (Very Hard)", "400 (Brutal)"};
+		default = 90;
+	};
+
+	class WBK_SCREAMER_HP
+	{
+		title = "Screamer HP";
+		values[] = {50, 90, 120, 160, 250, 400};
+		texts[] = {"50 (Easy)", "90 (Recommended)", "120", "160 (Mod Default)", "250 (Hard)", "400 (Very Hard)"};
+		default = 90;
+	};
+
+	class WBK_SCREAMER_COOLDOWN
+	{
+		title = "Screamer scream cooldown (seconds)";
+		values[] = {15, 20, 30, 45, 60, 90};
+		texts[] = {"15s (Very Frequent)", "20s (Mod Default)", "30s", "45s (Recommended)", "60s", "90s (Rare)"};
+		default = 45;
+	};
+
+	class WBK_SMASHER_HP
+	{
+		title = "Smasher HP — all variants (Regular, Spewer, Hellspawn)";
+		values[] = {100, 250, 500, 750, 1000, 2000, 3500};
+		texts[] = {"100 (Glass Cannon)", "250 (Easy)", "500 (Recommended)", "750", "1000 (Hard)", "2000 (Very Hard)", "3500 (Mod Default)"};
+		default = 500;
+	};
+
+	class WBK_GOLIATH_HP
+	{
+		title = "Goliath boss HP";
+		values[] = {500, 1000, 1500, 2000, 5000, 15000};
+		texts[] = {"500 (Easy)", "1000 (Recommended)", "1500", "2000 (Hard)", "5000 (Very Hard)", "15000 (Mod Default)"};
+		default = 1000;
+	};
+
+	class WBK_HEADSHOT_MULTIPLIER
+	{
+		title = "Headshot damage multiplier (all zombie types)";
+		values[] = {1, 2, 3, 5, 8, 10};
+		texts[] = {"1x (No bonus — Hard)", "2x", "3x", "5x (Mod Default)", "8x", "10x (Easy)"};
+		default = 5;
+	};
+
 };

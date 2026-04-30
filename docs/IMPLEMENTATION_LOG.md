@@ -2591,3 +2591,110 @@ Goliath is still reachable solo at wave 15: budget 69 ≥ cost 60. ✓
 ### Player Count Scaling Note
 
 `HOSTILE_TEAM_MULTIPLIER` defaults to `0.5` (50 in mission params), which means solo and groups up to 2 players compute identical budgets. Groups of 3 are also only 1 extra budget unit (floor(3×0.5)=1). Players wanting harder group scaling can raise this parameter in the mission lobby. This was left unchanged — the rebalance targets the absolute budget values, which affect all group sizes equally.
+
+---
+
+## Hotfix: WBK Difficulty Mission Parameters
+
+**Date:** 2026-04-29
+**Status:** Implemented
+
+### Problem
+
+WBK zombie health and difficulty values (Smasher HP, Goliath HP, Screamer cooldown) were hardcoded as `force` overrides in a local `cba_settings.sqf` file. Server hosts had no way to adjust these values in the mission lobby without editing the file directly.
+
+### Fix
+
+Exposed three WBK difficulty settings as standard Arma 3 mission parameters (lobby-selectable), with defaults matching the previously-forced values.
+
+**Mechanism:** CBA addon settings (`CBA_fnc_addSetting`) fire at preInit and write the parsed value into plain global variables (`WBK_Zombies_SmasherHP`, `WBK_Zombies_GoliathHP`, `WBK_Zombies_ScreamerCooldown`). Mission init scripts run after preInit. By overwriting these globals in `initServer.sqf` — which runs after `editMe.sqf` and before any wave spawns — the mission param values win cleanly. WBK AI scripts read these globals at unit spawn time, so timing is safe.
+
+No WBK mod files were modified.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `description.ext` | Added `WBK_LABEL_SPACE`, `WBK_LABEL`, `WBK_SCREAMER_COOLDOWN`, `WBK_SMASHER_HP`, `WBK_GOLIATH_HP` param classes before closing `};` of `class Params` |
+| `initServer.sqf` | Added 5 global overrides immediately after `waitUntil { scriptDone _hConfig };` |
+
+### New Mission Parameters
+
+| Param Class | Title | Values | Default |
+|---|---|---|---|
+| `WBK_SCREAMER_COOLDOWN` | Screamer scream cooldown (seconds) | 15, 20, 30, 45, 60, 90 | 45 |
+| `WBK_SMASHER_HP` | Smasher HP — all variants (Regular, Spewer, Hellspawn) | 100, 250, 500, 750, 1000, 2000, 3500 | 500 |
+| `WBK_GOLIATH_HP` | Goliath boss HP | 500, 1000, 1500, 2000, 5000, 15000 | 1000 |
+
+Defaults match the previously-forced `cba_settings.sqf` values. Mod defaults (Smasher 3500, Goliath 15000, Screamer 20s) are included as selectable options so hosts can opt into vanilla WBK difficulty.
+
+### WBK Global Variables Overwritten
+
+| Global | Set By (Mission) | WBK Mod Default | Mission Default |
+|---|---|---|---|
+| `WBK_Zombies_ScreamerCooldown` | `initServer.sqf` | 20 | 45 |
+| `WBK_Zombies_SmasherHP` | `initServer.sqf` | 3500 | 500 |
+| `WBK_Zombies_SmasherHP_Acid` | `initServer.sqf` | 4000 | 500 |
+| `WBK_Zombies_SmasherHP_Hell` | `initServer.sqf` | 5000 | 500 |
+| `WBK_Zombies_GoliathHP` | `initServer.sqf` | 15000 | 1000 |
+
+### Performance Note
+
+No performance impact. These are five scalar assignments that run once at server startup, before any zombie is spawned. No new PFHs, loops, or per-wave processing added.
+
+---
+
+## Hotfix: WBK Difficulty Params Expanded — T1/T3 HP + Headshot Multiplier
+
+**Date:** 2026-04-29
+**Status:** Implemented
+
+### Problem
+
+T1 zombie HP (Shambler/Runner), T3 HP (Bloater/Leaper/Screamer), and headshot multiplier were not exposed as mission params, only overrideable via `cba_settings.sqf`. Extended the previous WBK difficulty param block.
+
+### Excluded Params
+
+Three params from the user's `cba_settings.sqf` were intentionally excluded because the corresponding unit types are not spawned by the mission wave system:
+
+| CBA Param | Unit Type | Reason Excluded |
+|---|---|---|
+| `WBK_Zommbies_Halth_Walker` | Walker zombie | Not in `fn_initWBKRegistry.sqf` — not spawned |
+| `WBK_Zommbies_Halth_Trig` | Triggerman (shooter zombie) | Not in registry — not spawned |
+| `WBK_ZommbiesMeleeHealthParam` | Melee zombie | Not auto-spawned; Zeus/manual placement only |
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `description.ext` | Added `WBK_T1_HP`, `WBK_BLOATER_HP`, `WBK_LEAPER_HP`, `WBK_SCREAMER_HP` before `WBK_SCREAMER_COOLDOWN`; added `WBK_HEADSHOT_MULTIPLIER` after `WBK_GOLIATH_HP` |
+| `initServer.sqf` | Expanded WBK difficulty block with 6 new global overrides; consolidated all 11 WBK globals into one comment block |
+
+### New Mission Parameters
+
+| Param Class | Title | Values | Default | Note |
+|---|---|---|---|---|
+| `WBK_T1_HP` | Zombie HP — Shamblers and Runners | 20, 40, 60, 80, 100, 150 | 60 | Sets both `WBK_Zombies_MiddleHP` (mod default 40) and `WBK_Zombies_RunnerHP` (mod default 50) |
+| `WBK_BLOATER_HP` | Bloater HP | 40, 60, 80, 90, 120, 200 | 90 | `Zombie_Special_OPFOR_Boomer` (T3) |
+| `WBK_LEAPER_HP` | Leaper HP | 50, 90, 120, 180, 250, 400 | 90 | `Zombie_Special_OPFOR_Leaper_1` (T3), mod default 120 |
+| `WBK_SCREAMER_HP` | Screamer HP | 50, 90, 120, 160, 250, 400 | 90 | `Zombie_Special_OPFOR_Screamer` (T3), mod default 160 |
+| `WBK_HEADSHOT_MULTIPLIER` | Headshot damage multiplier (all zombie types) | 1, 2, 3, 5, 8, 10 | 5 | Affects both WBK SynthHP damage AND `fn_wbkHitPartScore` headshot scoring |
+
+### WBK Global Variables Overwritten
+
+| Global | Param | Mod Default | Mission Default |
+|---|---|---|---|
+| `WBK_Zombies_RunnerHP` | `WBK_T1_HP` | 50 | 60 |
+| `WBK_Zombies_MiddleHP` | `WBK_T1_HP` | 40 | 60 |
+| `WBK_Zombies_BloaterHP` | `WBK_BLOATER_HP` | 80 | 90 |
+| `WBK_Zombies_LeaperHP` | `WBK_LEAPER_HP` | 120 | 90 |
+| `WBK_Zombies_ScreamerHP` | `WBK_SCREAMER_HP` | 160 | 90 |
+| `WBK_Zombies_HeadshotMP` | `WBK_HEADSHOT_MULTIPLIER` | 5 | 5 |
+
+### Timing Notes
+
+All HP globals are consumed at unit spawn time (`setVariable ["WBK_SynthHP", ...]` in the WBK AI init scripts). `WBK_Zombies_HeadshotMP` is consumed at hit time inside HitPart EH callbacks. Both are safe: `initServer.sqf` overrides run before any zombie is spawned or any hit occurs.
+
+### Performance Note
+
+Six additional scalar assignments at server startup. No runtime cost.
