@@ -51,8 +51,11 @@ if (pWeap != "") then {
     {
         if (configName (_x >> "magazines") isEqualTo "magazines") then {
             _secAmmo = getArray (_x >> "magazines");
-            _ammoToAdd = selectRandom _secAmmo;
-            ammoPlayer addMagazines [_ammoToAdd, 2];
+            _heAmmo = _secAmmo select { _x find "HE" >= 0 };
+            if (count _heAmmo > 0) then {
+                _ammoToAdd = selectRandom _heAmmo;
+                ammoPlayer addMagazines [_ammoToAdd, 2];
+            };
         };
         _loop = _loop + 1;
     }forEach _pWeapCfgEntries
