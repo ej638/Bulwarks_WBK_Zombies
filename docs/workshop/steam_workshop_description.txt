@@ -44,9 +44,7 @@ Before starting a session, hosts should open the mission [b]Parameters[/b] menu 
 [/list] 
  
 [h2]WBK Difficulty Tuning[/h2]
-WBK zombie HP values, scream cooldowns, headshot multiplier, and other behavior are all adjustable in the mission [b]Parameters[/b] menu before starting. The defaults are tuned for 2-player runs, but if the mission feels too punishing for solo play, this is the first place to adjust.
-
-[b]Smashers[/b] and [b]Goliaths[/b] are the toughest encounters — their HP can be dialed down significantly if early waves feel unapproachable. [b]Screamers[/b] punish closely grouped teams; a longer scream cooldown helps if the debuff pressure is too much. 
+WBK zombie HP values, scream cooldowns, headshot multiplier, and other behavior are all adjustable in the mission [b]Parameters[/b] menu before starting. The defaults are tuned for 1-2 player runs, but if the mission feels too punishing for solo play, this is the first place to adjust.
 
 [h2]Development & Source Code[/h2]
 [b]GitHub Repository:[/b] [url=https://github.com/ej638/Bulwarks_WBK_Zombies]ej638/Bulwarks_WBK_Zombies[/url]
