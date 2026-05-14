@@ -1,6 +1,4 @@
-# Implementation Log — WBK-Bulwarks Integration Adapter
-
----
+# Implementation Log — WBK-Bulwarks Integration Adapter---
 
 ## Phase 1: Core Adapter — COMPLETE
 
@@ -2754,3 +2752,79 @@ Strike-1 recovery now targets a point 10–20m from the player at a random beari
 | `hostiles/clearStuck.sqf` | Strike-1 recovery: `doMove (getPos _nearPlayer)` → randomised 10–20m offset at random bearing around player |
 | `hostiles/wbk/fn_spawnWBKWave.sqf` | `EJ_spawnQueue = []` at wave start; both `BIS_fnc_findSafePos` calls: `waterMode` 1→0, ring +15/+40 → +30/+55; added `[0,0,0]` / inside-radius validation with computed fallback |
 | `docs/IMPLEMENTATION_LOG.md` | This entry |
+
+---
+
+## Hotfix: Issue #12 — WBK Fatality / Post-Downed True Death Instant Respawn
+
+**Date:** 2026-05-13  
+**Status:** Complete
+
+### Problem
+
+Players killed by WBK true-death paths were instantly respawning at the Bulwark and skipping the configured death-cam delay. The most visible cases were Smasher execution, Corrupted fatality, Goliath ground-shard impale, and lethal follow-up damage that resolved as a real death instead of `INCAPACITATED`.
+
+This presented as two player-facing symptoms from Issue #12:
+
+- execution-grade kills bypassed the normal 10-second countdown and camera-on-body phase,
+- players who were already downed and then took lethal true-death damage could also skip the intended delay.
+
+### Root Cause
+
+Two existing systems interacted badly:
+
+1. `hostiles/wbk/fn_initPlayerReviveBridge.sqf` intentionally allows specific execution animations to remain lethal rather than routing them into `bis_fnc_reviveEhHandleDamage`.
+2. `bulwark/functions/fn_endWave.sqf` resets `RESPAWN_TIME = 0` for build-phase free respawn, but `bulwark/functions/fn_startWave.sqf` was not restoring the configured combat respawn time for normal ticketed waves.
+3. `onPlayerKilled.sqf` then rebroadcast the stale global `RESPAWN_TIME`, so any true-death path after the first completed wave inherited a zero-second respawn.
+
+The revive bridge exposed the bug, but the controlling fault was the respawn timer lifecycle: once `RESPAWN_TIME` had been zeroed by build phase, true-death WBK kills reused that stale value.
+
+### Fix
+
+**A — Restore combat respawn baseline at wave start**
+
+`bulwark/functions/fn_startWave.sqf` now re-reads the lobby `RESPAWN_TIME` parameter at the start of every combat wave, then overrides it to `99999` only when tickets are exhausted. The restored value is always `publicVariable`'d and `remoteExec`'d via `setPlayerRespawnTime`.
+
+**B — Assert respawn delay locally before WBK fatality kills resolve**
+
+`hostiles/wbk/fn_initPlayerReviveBridge.sqf` now calls `setPlayerRespawnTime RESPAWN_TIME` immediately before each true-death fatality path:
+
+- `WBK_CreateDamage` execution bypass (`WBK_Smasher_Execution`, `Corrupted_Attack_victim`)
+- `WBK_Goliath_SpecialAttackGroundShard` wrapper
+- `HandleDamage` execution / `EJ_wbk_allowLethalDamage` gates
+
+This must happen on the victim machine because the WBK fatality damage path resolves locally there.
+
+**C — Keep death-script rebroadcast aligned with the authoritative runtime timer**
+
+`onPlayerKilled.sqf` now uses a safe `buildPhase` lookup default and always rebroadcasts the current authoritative `RESPAWN_TIME`. The no-ticket override to `99999` is preserved, and the death script no longer depends on a stale or missing phase/timer state.
+
+### Performance
+
+- One mission-parameter lookup per wave start.
+- A few client-local `setPlayerRespawnTime` calls only on rare fatality branches.
+- No new polling loops, PFHs, or per-unit scans.
+
+### Components Delivered
+
+| # | File | Purpose | Spec |
+|---|---|---|---|
+| 1 | `bulwark/functions/fn_startWave.sqf` | Restore configured combat respawn delay at wave start before ticket override | N/A |
+| 2 | `hostiles/wbk/fn_initPlayerReviveBridge.sqf` | Assert local respawn delay before WBK fatality-grade true deaths | N/A |
+| 3 | `onPlayerKilled.sqf` | Re-broadcast authoritative runtime respawn timer safely on player death | N/A |
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `bulwark/functions/fn_startWave.sqf` | Restores `RESPAWN_TIME` from mission param every combat wave; keeps `99999` override for no-ticket state; always publishes timer |
+| `hostiles/wbk/fn_initPlayerReviveBridge.sqf` | Added `setPlayerRespawnTime RESPAWN_TIME` immediately before execution / impale true-death branches |
+| `onPlayerKilled.sqf` | Safe `buildPhase` lookup; preserves `99999` override; always re-broadcasts authoritative `RESPAWN_TIME` |
+| `docs/IMPLEMENTATION_LOG.md` | This entry |
+
+### Global Variables
+
+| Variable | Change |
+|---|---|
+| `RESPAWN_TIME` | Lifecycle corrected: reset from lobby param at combat-wave start, still overridden to `99999` when tickets are exhausted |
+
