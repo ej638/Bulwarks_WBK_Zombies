@@ -44,9 +44,13 @@ WBK_CreateDamage = {
     };
     if (_target getVariable ["RevByMedikit", false]) exitWith {};
 
-    // Player is in an execution animation — allow instant kill
+    // Player is in an execution animation — allow instant kill.
+    // Assert the combat respawn delay locally before the kill lands so the
+    // engine's death timer is non-zero.  setPlayerRespawnTime is locality-
+    // sensitive and this code already runs on the victim's machine.
     private _anim = animationState _target;
     if (_anim in ["WBK_Smasher_Execution", "Corrupted_Attack_victim"]) exitWith {
+        setPlayerRespawnTime RESPAWN_TIME;
         _target setDamage 1;
     };
 
@@ -106,7 +110,10 @@ if (isNil "EJ_WBK_GroundShard_original" && {!isNil "WBK_Goliath_SpecialAttackGro
 
 WBK_Goliath_SpecialAttackGroundShard = {
     if (isPlayer _this) then {
-        // Ground spike is a cinematic instant-kill (impale animation)
+        // Ground spike is a cinematic instant-kill (impale animation).
+        // Assert the combat respawn delay before the original's setDamage 1
+        // fires HandleDamage synchronously — timer must be in place first.
+        setPlayerRespawnTime RESPAWN_TIME;
         // Set flag so HandleDamage allows the lethal damage through.
         // Clear AFTER the original returns — setDamage inside the
         // original fires HandleDamage synchronously for every hit-point
@@ -152,8 +159,12 @@ player addEventHandler ["HandleDamage", {
     if (_beingRevived) exitWith { 0 };
 
     // ── Gate: execution animations → allow full damage through
+    // Belt-and-suspenders: assert respawn delay here too in case the
+    // WBK_CreateDamage override's setPlayerRespawnTime ran on a prior tick
+    // and was overwritten before this HandleDamage call resolved.
     private _anim = animationState player;
     if (_anim in ["WBK_Smasher_Execution", "Corrupted_Attack_victim"]) exitWith {
+        setPlayerRespawnTime RESPAWN_TIME;
         _damage
     };
 
@@ -162,6 +173,7 @@ player addEventHandler ["HandleDamage", {
     // returns — do NOT clear here (HandleDamage fires per-hitpoint
     // plus overall; all calls must pass damage through).
     if (player getVariable ["EJ_wbk_allowLethalDamage", false]) exitWith {
+        setPlayerRespawnTime RESPAWN_TIME;
         _damage
     };
 
