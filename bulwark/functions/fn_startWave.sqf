@@ -46,10 +46,13 @@ if(!isNil "nightWave") then {
 [] remoteExec ["killPoints_fnc_updateHud", 0];
 
 _respawnTickets = [west] call BIS_fnc_respawnTickets;
+// fn_endWave resets RESPAWN_TIME to 0 for build-phase free respawn.
+// Restore the configured combat delay every wave before checking tickets.
+RESPAWN_TIME = ("RESPAWN_TIME" call BIS_fnc_getParamValue);
 if (_respawnTickets <= 0) then {
 	RESPAWN_TIME = 99999;
-	publicVariable "RESPAWN_TIME";
 };
+publicVariable "RESPAWN_TIME";
 [RESPAWN_TIME] remoteExec ["setPlayerRespawnTime", 0];
 
 missionNamespace setVariable ["buildPhase", false, true];
