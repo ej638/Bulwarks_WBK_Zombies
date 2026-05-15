@@ -32,6 +32,18 @@ if (isNil "EJ_dmgTintPFH") then {
     }, 1] call CBA_fnc_addPerFrameHandler;
 };
 
+// ── Clear stale IMS invincibility flag after vanilla manual revive ──
+// When a player is INCAPACITATED, the HandleDamage EH sets
+// IMS_IsUnitInvicibleScripted = 1 so WBK zombies skip attacking them.
+// The custom fn_revivePlayer clears it after a Medikit auto-revive, but
+// vanilla teammate revive bypasses that path, leaving the flag stale.
+// Clearing it here ensures the player takes WBK damage normally within
+// 1 second of standing up via the vanilla revive action.
+if (lifeState player != "INCAPACITATED"
+    && (player getVariable ["IMS_IsUnitInvicibleScripted", 0]) == 1) then {
+    player setVariable ["IMS_IsUnitInvicibleScripted", nil, true];
+};
+
 // ── Find the persistent HUD display ─────────────────────────────────
 disableSerialization;
 private _display = uiNamespace getVariable ["KillPointsHud", displayNull];

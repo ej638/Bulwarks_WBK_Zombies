@@ -2828,3 +2828,67 @@ This must happen on the victim machine because the WBK fatality damage path reso
 |---|---|
 | `RESPAWN_TIME` | Lifecycle corrected: reset from lobby param at combat-wave start, still overridden to `99999` when tickets are exhausted |
 
+---
+
+## Fix: Issue #11 — Players Cannot Use Medikits
+
+**Date:** 2026-05-14
+**Status:** Implemented
+
+### Problem
+
+Players could not self-heal, heal teammates, or revive teammates with FirstAidKits or Medikits. The expected scroll-wheel field-treatment actions were missing. Tested on a hosted Eden server. User-discovered workaround: `this setUnitTrait ["medic", true];` in a placed unit's init restored healing.
+
+### Root Cause
+
+The controlling defect was a missing medic trait at the player level. All playable slots are civilian survivor classes (`C_Man_*`, `C_man_sport_*`, etc.) that do not carry the medic trait by default. `initPlayerLocal.sqf` and `onPlayerRespawn.sqf` never assigned the trait at runtime.
+
+Vanilla revive is fully enabled (`ReviveMode = 1`, `ReviveRequiredItems = 2`) and medical items are present (Bulwark default Medikits, loot-pool FAKs and Medikits). The item side of the contract was always satisfied; the actor capability gate was not.
+
+The manual field-treatment actions (self-heal, teammate heal, teammate revive) are engine-provided via the vanilla BIS revive system, not custom mission actions. Without the medic trait the engine does not expose those actions regardless of item possession.
+
+### Edge Case Found and Fixed Alongside
+
+Enabling the vanilla manual teammate revive pathway exposed a stale-flag bug:
+
+When a player goes INCAPACITATED, the HandleDamage EH in `fn_initPlayerReviveBridge.sqf` sets `IMS_IsUnitInvicibleScripted = 1` to protect the downed player from WBK zombie attacks. That flag is cleared by `fn_revivePlayer.sqf`, but only when the mission's custom Medikit auto-revive path fires (`bulwark_fnc_revivePlayer`). Players who go INCAPACITATED without a Medikit and are then revived by a teammate via the vanilla action bypass `fn_revivePlayer`, leaving `IMS_IsUnitInvicibleScripted = 1` stale. The result: the revived player is permanently immune to WBK attacks for the rest of the wave.
+
+This edge case was only reachable after the medic trait fix enabled manual teammate revive.
+
+**Fix:** Added a self-correcting clear in `fn_playerDamageTint.sqf`. The existing 1-second CBA PFH that drives the damage tint now also clears the stale IMS flag whenever the player's `lifeState` is not `INCAPACITATED` but the flag is still set. The flag clears within one second of the player standing up from vanilla revive.
+
+### Design Notes
+
+- The fix applies the trait in both lifecycle scripts to cover initial join and every respawn.
+- `setUnitTrait` is locality-sensitive; both scripts execute on the owning client, so no `remoteExec` is needed.
+- The custom Medikit lethal-save path in `fn_initPlayerReviveBridge.sqf` is unaffected. It intercepts lethal hits before the player enters INCAPACITATED state and calls `bulwark_fnc_revivePlayer` directly. That path does not depend on the medic trait.
+- Vanilla teammate revive only appears on INCAPACITATED players (those who went down without a Medikit). There is no race condition between the two revive paths.
+
+### Components Delivered
+
+| # | File | Change | Purpose |
+|---|---|---|---|
+| 1 | `initPlayerLocal.sqf` | Added `player setUnitTrait ["medic", true];` | Grants medic capability on initial join |
+| 2 | `onPlayerRespawn.sqf` | Added `player setUnitTrait ["medic", true];` | Preserves medic capability across all respawns |
+| 3 | `hostiles/wbk/fn_playerDamageTint.sqf` | Added IMS stale-flag clear before the HUD display check | Clears `IMS_IsUnitInvicibleScripted` within 1s of vanilla revive restoring the player |
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `initPlayerLocal.sqf` | `player setUnitTrait ["medic", true];` after initial variable setup |
+| `onPlayerRespawn.sqf` | `player setUnitTrait ["medic", true];` after initial variable setup |
+| `hostiles/wbk/fn_playerDamageTint.sqf` | IMS flag self-healing clear at top of function body |
+| `docs/IMPLEMENTATION_LOG.md` | This entry |
+
+### Global Variables
+
+| Variable | Change |
+|---|---|
+| `IMS_IsUnitInvicibleScripted` | Stale-flag fix: now cleared within 1s after vanilla revive via the existing 1-second `EJ_dmgTintPFH` loop |
+
+### Performance Notes
+
+- One `setUnitTrait` call per player join and per respawn. Negligible.
+- The IMS flag check adds two `getVariable` reads and one `setVariable` to an already-running 1-second PFH. Negligible.
+
