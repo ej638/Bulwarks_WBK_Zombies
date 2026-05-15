@@ -15,14 +15,15 @@ All adapter global variables are prefixed `EJ_`.
 
 ---
 
-## Implementation Log — Always Update
+## Implementation Log — Always Update After Code Changes
 
-**After every change, update `docs/IMPLEMENTATION_LOG.md`.**
+**After every code change, update `docs/IMPLEMENTATION_LOG.md`.**
 
 - Add a new hotfix or phase section for meaningful changes.
 - Record: files modified, variables added/changed, root cause and fix for bugs.
 - Follow the established table format for "Components Delivered", "Files Modified", and "Global Variables".
 - Reference spec section numbers (e.g. `Spec §2.4`) where applicable.
+- Documentation only changes do not require an implementation log entry.
 
 ---
 
