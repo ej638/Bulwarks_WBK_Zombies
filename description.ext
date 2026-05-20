@@ -65,6 +65,7 @@ class CfgRemoteExec
 		class createBlur {};
 		class suiExplode{};
 		class spawnWBKUnit{};
+		class installAuthoritativeHitPart{};
 		class wbkCommitHitAndMaybeKill{};
 		class wbkHitPartScore{};
 		class registerHitPartBridge{};

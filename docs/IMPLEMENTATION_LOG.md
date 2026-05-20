@@ -3016,3 +3016,59 @@ Without those building blocks, Patch 2 would have to duplicate scorer logic agai
 
 Patch 1 adds no PFHs, no polling loops, and no new steady-state scans. The new commit helper is per-hit only, and at this stage it is foundational code for later patches rather than an already-live hot path.
 
+### Patch 2 — Authoritative HitPart Handlers + Installer (2026-05-19)
+
+**Status:** Implemented, not yet wired into the spawn/install path
+
+### Problem
+
+Patch 1 added the server commit core, but there was still no authoritative owner-local replacement for the stock WBK `HitPart` path. The adapter still depended on the observer bridge and had no installer that could:
+
+1. choose the locked handler family from Patch 0,
+2. replace WBK's `HitPart` handler on the correct object,
+3. mirror the family-specific synthetic-HP mutation path before sending the server commit.
+
+### Fix — New owner-local handler family set
+
+Patch 2 adds a dedicated installer plus one handler per locked family:
+
+- `standard` — shared regular-zombie path with subtype-specific leg behavior for Shambler, Runner, and Screamer,
+- `leaper` — no explosive branch; head/body only,
+- `bloater` — explosive x2 and body x1 only,
+- `smasher` — conservative dedicated incoming-hit path using the documented stun trigger while avoiding unsupported standard-family assumptions,
+- `goliath` — hitbox-based path with documented invulnerability windows and stagger trigger.
+
+The installer snapshots `EJ_wbk_maxHP`, marks `EJ_wbkHitFamily`, and sets `EJ_wbkScoreHookReady` only after the authoritative handler is attached.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_installAuthoritativeHitPart.sqf` | **NEW** — owner-local installer; resolves family, resolves Goliath hitbox, removes existing `HitPart` EHs, installs authoritative handler, snapshots `EJ_wbk_maxHP`, sets readiness + diagnostics |
+| `hostiles/wbk/fn_wbkHitPartStandard.sqf` | **NEW** — standard family handler with Shambler/Runner/Screamer leg-side-effect branches |
+| `hostiles/wbk/fn_wbkHitPartLeaper.sqf` | **NEW** — Leaper head/body authoritative handler |
+| `hostiles/wbk/fn_wbkHitPartBloater.sqf` | **NEW** — Bloater explosive/body authoritative handler |
+| `hostiles/wbk/fn_wbkHitPartSmasher.sqf` | **NEW** — conservative dedicated Smasher authoritative handler using the documented stun trigger |
+| `hostiles/wbk/fn_wbkHitPartGoliath.sqf` | **NEW** — Goliath hitbox authoritative handler with invulnerability-window and stagger checks |
+| `hostiles/wbk/Functions.hpp` | Added function declarations for installer and all five family handlers |
+| `description.ext` | Added `installAuthoritativeHitPart` to `CfgRemoteExec` for later owner-local installation dispatch |
+
+### Global Variables
+
+| Variable | Set By | Scope | Purpose |
+|---|---|---|---|
+| `EJ_wbkHitSeq` | Family handlers | Per-unit (`setVariable`, not public) | Owner-local monotonic hit sequence for authoritative commit payloads |
+| `EJ_wbkScoreHookReady` | `fn_installAuthoritativeHitPart` | Per-unit (`setVariable`, public) | Marks that the authoritative handler is installed and live |
+| `EJ_wbkHitFamily` | `fn_installAuthoritativeHitPart` | Per-unit (`setVariable`, public) | Diagnostic family tag installed on the unit |
+| `EJ_wbkAuthoritativeHitPartId` | `fn_installAuthoritativeHitPart` | Per-unit (`setVariable`, not public) | Installed event-handler id for the authoritative `HitPart` hook |
+| `EJ_wbkOwnerUnit` | `fn_installAuthoritativeHitPart` | Hook object (`setVariable`, not public) | Maps proxy hook objects such as the Goliath hitbox back to the owning WBK unit |
+
+### Notes / Limits
+
+1. **Goliath hitbox resolution:** The bundled audit material documents the `Goliath_HitBox` proxy object but not a guaranteed variable name. The installer therefore resolves the hitbox conservatively from attached objects of type `Goliath_HitBox` and logs failure instead of silently falling back to the wrong object.
+2. **Smasher incoming-hit parity:** The available Smasher source-derived docs confirmed a dedicated family and stun trigger, but not the full stock branch body. The Patch 2 Smasher handler therefore avoids assuming standard-family branch parity and keeps damage conservative until the live path is validated.
+
+### Performance Notes
+
+Patch 2 adds no PFHs and no persistent polling. The only timed behavior added here is the documented per-hit cooldown reset for Smasher/Goliath stagger gating, and those only run when the documented stun conditions are met.
+
