@@ -57,6 +57,7 @@ if (_family == "goliath") then {
 
     if (isNull _hookObject) exitWith {
         _unit setVariable ["EJ_wbkScoreHookReady", false, true];
+        _unit setVariable ["EJ_wbkScoreHookVerified", false, true];
         _unit setVariable ["EJ_wbkHitFamily", _family, true];
         diag_log format [
             "[EJ] installAuthoritativeHitPart: Goliath hitbox not found for %1.",
@@ -67,6 +68,7 @@ if (_family == "goliath") then {
 
 if (!local _hookObject) exitWith {
     _unit setVariable ["EJ_wbkScoreHookReady", false, true];
+    _unit setVariable ["EJ_wbkScoreHookVerified", false, true];
     _unit setVariable ["EJ_wbkHitFamily", _family, true];
     diag_log format [
         "[EJ] installAuthoritativeHitPart: hook object %1 for %2 is not local.",
@@ -76,6 +78,7 @@ if (!local _hookObject) exitWith {
 };
 
 _unit setVariable ["EJ_wbkScoreHookReady", false, true];
+_unit setVariable ["EJ_wbkScoreHookVerified", false, true];
 _unit setVariable ["EJ_wbkHitFamily", _family, true];
 _unit setVariable ["EJ_wbk_maxHP", _unit getVariable ["WBK_SynthHP", 50], true];
 
@@ -115,11 +118,12 @@ _unit setVariable ["EJ_wbkAuthoritativeHitPartId", _ehId];
 _unit setVariable ["EJ_wbkScoreHookReady", _markReady && {_ehId >= 0}, true];
 
 diag_log format [
-    "[EJ] Authoritative HitPart installed: class=%1 family=%2 hook=%3 local=%4 maxHP=%5 ready=%6",
+    "[EJ] Authoritative HitPart installed: class=%1 family=%2 hook=%3 local=%4 maxHP=%5 ready=%6 verified=%7",
     _className,
     _family,
     typeOf _hookObject,
     local _hookObject,
     _unit getVariable ["EJ_wbk_maxHP", -1],
-    _unit getVariable ["EJ_wbkScoreHookReady", false]
+    _unit getVariable ["EJ_wbkScoreHookReady", false],
+    _unit getVariable ["EJ_wbkScoreHookVerified", false]
 ];

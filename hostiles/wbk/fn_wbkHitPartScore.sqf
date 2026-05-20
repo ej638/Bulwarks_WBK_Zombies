@@ -34,13 +34,14 @@ params [
 if (isNull _target) exitWith {};
 
 diag_log format [
-    "[EJ] COMPAT: legacy wbkHitPartScore reached for %1. ready=%2 hitTime=%3",
+    "[EJ] COMPAT: legacy wbkHitPartScore reached for %1. ready=%2 verified=%3 hitTime=%4",
     typeOf _target,
     _target getVariable ["EJ_wbkScoreHookReady", false],
+    _target getVariable ["EJ_wbkScoreHookVerified", false],
     _hitEventTime
 ];
 
-if (_target getVariable ["EJ_wbkScoreHookReady", false]) exitWith {};
+if (_target getVariable ["EJ_wbkScoreHookVerified", false]) exitWith {};
 
 // --- Guard: no self-hits ---
 if (_target == _shooter) exitWith {};

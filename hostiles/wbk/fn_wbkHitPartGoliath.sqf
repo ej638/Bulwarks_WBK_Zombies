@@ -8,7 +8,10 @@
  *  Domain: Unit owner / Goliath hitbox owner
  */
 
-params ["_eventData"];
+private _eventData = _this;
+if !(_eventData isEqualType [] && {count _eventData >= 7}) exitWith {
+    diag_log format ["[EJ] Invalid HitPart payload for wbkHitPartGoliath: %1", _eventData];
+};
 
 _eventData params [
     "_target",
@@ -22,6 +25,8 @@ _eventData params [
 
 private _unit = _target getVariable ["EJ_wbkOwnerUnit", objNull];
 if (isNull _unit || {!alive _unit}) exitWith {};
+
+_unit setVariable ["EJ_wbkScoreHookVerified", true, true];
 
 private _immuneStates = [
     "goliaph_staggered",

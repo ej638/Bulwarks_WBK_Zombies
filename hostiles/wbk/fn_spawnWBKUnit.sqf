@@ -201,7 +201,7 @@ _unit addMPEventHandler ["MPKilled", {
 
 // MPHit EH — bootstrap fallback path. Fires on ALL machines for every hit,
 // so it remains available while the authoritative HitPart install is still
-// settling during unit startup. Once EJ_wbkScoreHookReady is true, MPHit no
+// settling during unit startup. Once EJ_wbkScoreHookVerified is true, MPHit no
 // longer awards score — correctness should then come only from the owner-local
 // authoritative HitPart path.
 _unit addMPEventHandler ["MPHit", {
@@ -224,8 +224,9 @@ _unit addMPEventHandler ["MPHit", {
     private _lastHPTime = _unit getVariable ["EJ_lastHitPartTime", -1];
     if (diag_tickTime - _lastHPTime < 0.05) exitWith {};
 
-    // Once the authoritative hook is confirmed ready, MPHit becomes telemetry-only.
-    if (_unit getVariable ["EJ_wbkScoreHookReady", false]) exitWith {};
+    // Once the authoritative hook has actually executed successfully,
+    // MPHit becomes telemetry-only.
+    if (_unit getVariable ["EJ_wbkScoreHookVerified", false]) exitWith {};
 
     // Award flat bootstrap score (can't get ammo data from MPHit, so use average)
     private _scoreVal = SCORE_HIT + (SCORE_DAMAGE_BASE * 0.5);
@@ -250,7 +251,8 @@ _unit addMPEventHandler ["MPHit", {
 // window, keep re-installing the authoritative handler on the unit owner. The
 // final attempt marks EJ_wbkScoreHookReady=true only after the bounded retry
 // window completes, which lets MPHit remain the bootstrap fallback while the
-// install race is still settling.
+// install race is still settling. MPHit is only suppressed after the
+// authoritative handler proves it can execute by setting EJ_wbkScoreHookVerified.
 [_unit] spawn {
     params ["_u"];
     private _timeout = diag_tickTime + 8;

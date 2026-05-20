@@ -10,7 +10,10 @@
  *  Domain: Unit owner
  */
 
-params ["_eventData"];
+private _eventData = _this;
+if !(_eventData isEqualType [] && {count _eventData >= 7}) exitWith {
+    diag_log format ["[EJ] Invalid HitPart payload for wbkHitPartSmasher: %1", _eventData];
+};
 
 _eventData params [
     "_target",
@@ -24,6 +27,8 @@ _eventData params [
 
 private _unit = _target getVariable ["EJ_wbkOwnerUnit", _target];
 if (isNull _unit || {!alive _unit}) exitWith {};
+
+_unit setVariable ["EJ_wbkScoreHookVerified", true, true];
 
 private _synthHPBefore = _unit getVariable ["WBK_SynthHP", 0];
 if (_synthHPBefore <= 0) exitWith {};

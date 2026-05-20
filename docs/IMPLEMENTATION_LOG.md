@@ -3225,3 +3225,79 @@ The legacy observer-path entries remain present during rollout because Patch 6 d
 
 Patch 7 was a registration checkpoint only. No new runtime logic, no PFHs, and no additional polling behavior were introduced here.
 
+### Hotfix: Issue #10 Authoritative Runtime Regression — Handler Payload Contract + Verified Hook Gating (2026-05-19)
+
+**Status:** Implemented, pending in-game validation
+
+### Problem
+
+LAN validation exposed a hard regression after the authoritative rollout:
+
+- zombies no longer took damage,
+- one-shot and ordinary firearms both failed to kill them,
+- no hit markers appeared,
+- score no longer incremented.
+
+### Root Cause
+
+Two implementation problems combined into a full damage-path failure:
+
+1. **Authoritative family-handler entry contract was wrong.**
+
+`fn_installAuthoritativeHitPart.sqf` forwards the raw inner HitPart payload with calls like:
+
+```sqf
+(_this select 0) call EJ_fnc_wbkHitPartStandard;
+```
+
+But each family handler was written as though it would receive a wrapper array containing that payload:
+
+```sqf
+params ["_eventData"];
+_eventData params [...];
+```
+
+In SQF that binds `_eventData` to the first element of the payload (`_target`), not to the full event array. The next destructure step therefore failed, so the handler exited before it could mutate `WBK_SynthHP` or send the server commit.
+
+2. **Bootstrap fallback shut off too early.**
+
+`MPHit` fallback was suppressed by `EJ_wbkScoreHookReady`, which only meant that an EH id had been installed — not that the authoritative handler had actually executed successfully. Once the broken handler was installed, the fallback scorer shut off too.
+
+Because WBK's stock `HitPart` handler had already been removed and WBK AI keeps `allowDamage false` active, this left the zombies with no remaining working damage path.
+
+### Fix
+
+The corrective change implements the first three remediation steps from the RCA:
+
+1. **Fix the handler entry contract**
+  All five authoritative family handlers now destructure the raw HitPart event payload directly from `_this` instead of wrapping it in an extra `_eventData` param layer.
+
+2. **Add defensive payload guards**
+  Each authoritative family handler now validates that `_this` is an array with the expected minimum shape before doing any game logic. Invalid payloads log explicitly to RPT instead of failing silently.
+
+3. **Separate installed vs verified hook state**
+  New per-unit variable `EJ_wbkScoreHookVerified` is reset on install and set only when an authoritative family handler successfully parses a live event and reaches runtime logic. MPHit bootstrap fallback is now suppressed only by the verified flag, not by install-ready state alone.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_wbkHitPartStandard.sqf` | Fixed payload destructuring; added invalid-payload guard; marks `EJ_wbkScoreHookVerified` once handler executes successfully |
+| `hostiles/wbk/fn_wbkHitPartLeaper.sqf` | Fixed payload destructuring; added invalid-payload guard; marks `EJ_wbkScoreHookVerified` |
+| `hostiles/wbk/fn_wbkHitPartBloater.sqf` | Fixed payload destructuring; added invalid-payload guard; marks `EJ_wbkScoreHookVerified` |
+| `hostiles/wbk/fn_wbkHitPartSmasher.sqf` | Fixed payload destructuring; added invalid-payload guard; marks `EJ_wbkScoreHookVerified` |
+| `hostiles/wbk/fn_wbkHitPartGoliath.sqf` | Fixed payload destructuring; added invalid-payload guard; marks `EJ_wbkScoreHookVerified` |
+| `hostiles/wbk/fn_installAuthoritativeHitPart.sqf` | Resets `EJ_wbkScoreHookVerified` during install / install-failure paths; enhanced install diagnostics |
+| `hostiles/wbk/fn_spawnWBKUnit.sqf` | MPHit bootstrap fallback now gates on `EJ_wbkScoreHookVerified` instead of `EJ_wbkScoreHookReady`; comments updated to match runtime contract |
+| `hostiles/wbk/fn_wbkHitPartScore.sqf` | Legacy compatibility scorer now uses verified-hook state in diagnostics and exit guard |
+
+### Global Variables
+
+| Variable | Set By | Scope | Purpose |
+|---|---|---|---|
+| `EJ_wbkScoreHookVerified` | authoritative family handlers / installer | Per-unit (`setVariable`, public) | Distinguishes “authoritative hook installed” from “authoritative hook has actually executed successfully” |
+
+### Performance Notes
+
+This corrective change adds only one payload-shape check and one verification write on the authoritative HitPart path. No new PFHs or persistent polling loops were introduced.
+
