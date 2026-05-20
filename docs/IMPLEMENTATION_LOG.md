@@ -3153,3 +3153,39 @@ The function also clears `EJ_pendingKillScorer` and `EJ_pendingKillSeq` at the e
 
 Patch 4 adds only a few per-death `getVariable` / `setVariable` calls on the server and no new loop or PFH behavior.
 
+### Patch 6 — Legacy Observer Functions Re-Scoped (2026-05-19)
+
+**Status:** Implemented, pending in-game validation
+
+### Problem
+
+After Patches 2–4, the old observer-path functions were no longer the intended live correctness path, but they still existed in their original form:
+
+- `fn_registerHitPartBridge.sqf` could still recreate the legacy additive `HitPart` observer bridge,
+- `fn_wbkHitPartScore.sqf` still behaved like a normal scoring function instead of an explicit compatibility surface.
+
+That left rollout risk in two directions:
+
+1. an unexpected old call site could silently reactivate the observer path,
+2. if the legacy score bridge fired on a unit that already had the authoritative hook ready, it could still try to behave like a normal scorer instead of clearly identifying itself as deprecated.
+
+### Fix
+
+Patch 6 keeps both functions for one rollout window, but re-scopes them as explicit compatibility wrappers:
+
+- `fn_registerHitPartBridge.sqf` now logs unexpected use and forwards directly to `EJ_fnc_installAuthoritativeHitPart` instead of recreating the old observer EH,
+- `fn_wbkHitPartScore.sqf` now logs unexpected observer-path use and immediately exits if `EJ_wbkScoreHookReady` is already true, so the legacy path cannot keep scoring once the authoritative hook is live.
+
+The legacy scorer body is intentionally retained only for the not-ready compatibility case during rollout.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_registerHitPartBridge.sqf` | Replaced legacy bridge registration with diagnostic compatibility wrapper that forwards to `EJ_fnc_installAuthoritativeHitPart` |
+| `hostiles/wbk/fn_wbkHitPartScore.sqf` | Added compatibility diagnostics and readiness guard so the legacy observer scorer cannot remain active after authoritative install |
+
+### Performance Notes
+
+Patch 6 adds only diagnostic logging and one readiness check on the legacy fallback path. No new loop, PFH, or steady-state polling was introduced.
+

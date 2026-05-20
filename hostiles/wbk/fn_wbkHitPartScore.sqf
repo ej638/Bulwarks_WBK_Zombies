@@ -1,18 +1,11 @@
 /**
  *  fn_wbkHitPartScore
  *
- *  Core Adapter — Phase 1 / Phase 3 (Dedicated-Server + HC fix)
- *  Bridges WBK synthetic damage into the Bulwarks scoring pipeline.
- *
- *  WBK zombies call allowDamage false every tick, which breaks the
- *  vanilla Arma "Hit" EH (damage is always 0). This function reads
- *  the ammo config data and mirrors the WBK damage calculation to
- *  derive a normalised damage value for scoring.
- *
- *  Called in two ways (both via fn_registerHitPartBridge relay):
- *    - Directly on server when the zombie is server-local
- *    - Via remoteExecCall from a Headless Client when the zombie
- *      has been offloaded
+ *  Patch 6 — compatibility wrapper.
+ *  The observer-bridge scorer is no longer part of the live correctness
+ *  contract. Keep the old fallback logic temporarily during rollout, but
+ *  log whenever this path is reached unexpectedly and refuse to score once
+ *  the authoritative hook is already marked ready.
  *
  *  Expected params (pre-extracted by the relay wrapper):
  *    [_target, _shooter, _shotParents, _selection, _ammo,
@@ -37,6 +30,17 @@ params [
     ["_wasAliveAtHit", true],
     ["_hitEventTime",  -1]
 ];
+
+if (isNull _target) exitWith {};
+
+diag_log format [
+    "[EJ] COMPAT: legacy wbkHitPartScore reached for %1. ready=%2 hitTime=%3",
+    typeOf _target,
+    _target getVariable ["EJ_wbkScoreHookReady", false],
+    _hitEventTime
+];
+
+if (_target getVariable ["EJ_wbkScoreHookReady", false]) exitWith {};
 
 // --- Guard: no self-hits ---
 if (_target == _shooter) exitWith {};
