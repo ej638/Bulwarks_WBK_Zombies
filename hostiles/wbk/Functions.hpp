@@ -4,6 +4,8 @@ class EJ
     {
         file = "hostiles\wbk";
         class spawnWBKUnit {};
+        class wbkResolveScorer {};
+        class wbkCommitHitAndMaybeKill {};
         class wbkHitPartScore {};
         class registerHitPartBridge {};
         class initWBKRegistry {};

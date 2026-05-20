@@ -50,7 +50,16 @@ _unit addEventHandler ["HitPart", {
         []
     };
 
-    private _extractedData = [_target, _shooter, _shotParents, _selection, _ammo];
+    // Pre-capture volatile state for terminal-hit detection.
+    // WBK may force death (setDamage 1) before the relay lands on the server,
+    // so we record the alive state and synthetic HP at event-fire time.
+    // _wasAliveAtHit prevents corpse-hit scoring; _preHitSynthHP enables
+    // overkill clamping and distinguishes a live terminal hit from a stale relay.
+    private _preHitSynthHP = _target getVariable ["WBK_SynthHP", 0];
+    private _wasAliveAtHit = alive _target;
+    private _hitEventTime  = diag_tickTime;
+
+    private _extractedData = [_target, _shooter, _shotParents, _selection, _ammo, _preHitSynthHP, _wasAliveAtHit, _hitEventTime];
 
     if (isServer) then {
         // Unit is server-local — call scoring directly

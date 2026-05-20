@@ -2892,3 +2892,127 @@ This edge case was only reachable after the medic trait fix enabled manual teamm
 - One `setUnitTrait` call per player join and per respawn. Negligible.
 - The IMS flag check adds two `getVariable` reads and one `setVariable` to an already-running 1-second PFH. Negligible.
 
+---
+
+## Hotfix: Issue #10 — Instant-Kill Zombie Scoring (First-Hit Lethal Attribution)
+
+**Date:** 2026-05-15
+**Status:** Implemented, pending in-game validation
+
+### Problem
+
+When a WBK zombie died from the very first damage event it received (first-hit lethal — headshot, GM6, explosive), players received neither a hit score nor a kill score. The zombie appeared to count as a zero-value kill.
+
+### Root Cause (from RCA in `docs/generated/issue-10-instant-kill-zombie-scoring-rca.md`)
+
+A fatal timing window existed in the HitPart bridge:
+
+1. WBK's own HitPart handler fires first (registration order) and depletes `WBK_SynthHP` to zero, calling `setDamage 1`.
+2. `MPKilled` fires on the server; `_instigator` may be null (WBK strips it across the network boundary).
+3. `EJ_lastScorer` has not yet been written (the bridge hasn't run yet).
+4. Our HitPart bridge EH fires — but `fn_wbkHitPartScore` immediately exits on `!alive _target`.
+
+Result: `fn_killed` has no valid instigator and no fallback scorer → zero kill credit. No hit score was ever awarded for the terminal shot.
+
+A secondary risk also existed: once the `!alive` exit was removed, a post-death HitPart relay could double-score if `MPHit` had already awarded a flat score during the same impact (no symmetric dedup on the HitPart side).
+
+### Fix — Three-layer adapter change
+
+**Layer 1 — Pre-hit state capture in relay (`fn_registerHitPartBridge.sqf`)**
+
+The HitPart EH now captures three additional values at event-fire time, before the relay reaches the server:
+- `_preHitSynthHP`: `WBK_SynthHP` at event time — proves synthetic HP was positive when the event fired
+- `_wasAliveAtHit`: `alive _target` at event time — distinguishes a real terminal hit from a post-mortem shot
+- `_hitEventTime`: `diag_tickTime` for diagnostics and dedup correlation
+
+These are appended to `_extractedData` (8-element array, was 5).
+
+**Layer 2 — Reworked guard + early scorer persistence (`fn_wbkHitPartScore.sqf`)**
+
+The function was restructured to separate kill attribution from hit scoring:
+
+1. Self-hit guard kept as-is.
+2. Scorer is resolved immediately.
+3. `EJ_lastScorer` is written **before** any validity-based exit — guaranteeing `fn_killed` has a fallback even if the hit itself is later rejected.
+4. The old `if (!alive _target) exitWith {}` is replaced with a pre-hit validity guard:
+   - Exit if `!_wasAliveAtHit` (corpse hit — target was already dead when HitPart fired)
+   - Exit if `_preHitSynthHP <= 0` (stale/invalid relay — WBK already zeroed HP before event fired)
+5. After damage calculation, `_effectiveDmg` is clamped to `_preHitSynthHP` to prevent overkill over-credit.
+
+**Layer 3 — Symmetric dedup (`fn_spawnWBKUnit.sqf` + `fn_wbkHitPartScore.sqf`)**
+
+The old dedup was one-way: MPHit checked `EJ_lastHitPartTime` and skipped if HitPart was recent. Removing the dead-target exit created a double-score risk in the opposite ordering (MPHit awards first, HitPart arrives later on the same impact). Dedup is now symmetric:
+
+- **MPHit side:** After awarding a score, records `EJ_lastMPHitTime = diag_tickTime`.
+- **HitPart side:** Always marks `EJ_lastHitPartTime` for MPHit's existing check. Then checks `EJ_lastMPHitTime`; if MPHit fired within 50ms, exits without awarding a second score (attribution is still persisted above).
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_registerHitPartBridge.sqf` | Capture `_preHitSynthHP`, `_wasAliveAtHit`, `_hitEventTime` at HitPart event-fire time; extend `_extractedData` to 8 elements |
+| `hostiles/wbk/fn_wbkHitPartScore.sqf` | Update params (3 new with defaults); remove `!alive _target` exit; move `EJ_lastScorer` persistence before validity exits; add pre-hit validity guard; add `_effectiveDmg min _preHitSynthHP` overkill clamp; add symmetric dedup check against `EJ_lastMPHitTime` |
+| `hostiles/wbk/fn_spawnWBKUnit.sqf` | MPHit handler: record `EJ_lastMPHitTime` after awarding score for symmetric dedup |
+
+### Global Variables
+
+| Variable | Set By | Scope | Purpose |
+|---|---|---|---|
+| `EJ_lastMPHitTime` | `fn_spawnWBKUnit` (MPHit handler) | Per-unit (`setVariable`) | Timestamp of last MPHit score award; HitPart checks this to avoid double-scoring when MPHit wins the race |
+
+### Invariants After Fix
+
+| Scenario | EJ_lastScorer | Hit score | Kill score |
+|---|---|---|---|
+| First-hit lethal (HitPart wins race) | Set before validity exit | One precise award | From EJ_lastScorer fallback |
+| First-hit lethal (MPHit wins race) | Set by MPHit handler (unchanged) | One flat award | From EJ_lastScorer fallback |
+| Multi-hit kill (non-lethal then lethal) | Set on each hit | One award per hit | From EJ_lastScorer or engine instigator |
+| Corpse hit (target already dead at event fire) | Not overwritten | Zero (rejected by !_wasAliveAtHit) | N/A |
+| Post-death relay duplicate | Not overwritten | Zero (rejected by _preHitSynthHP <= 0) | N/A |
+
+### Performance Notes
+
+Three `getVariable` reads added to the HitPart relay path (per hit, per unit, on the machine where the EH fires). All occur inside the existing HitPart EH body — no new PFH or polling loop. Cost is negligible compared to the WBK mod's 0.01–0.1s per-unit PFH baseline.
+
+### Patch 1 — Authoritative Commit Core (2026-05-19)
+
+**Status:** Implemented, not yet wired into the live authoritative `HitPart` path
+
+### Problem
+
+The authoritative Issue #10 plan required two new primitives that did not yet exist in the adapter:
+
+1. scorer resolution still lived inline inside `fn_wbkHitPartScore.sqf` instead of in a reusable helper that future owner-local handlers could call directly,
+2. there was no dedicated server commit function that could persist scorer state, append the hit score, and write a kill ticket before triggering the lethal engine kill.
+
+Without those building blocks, Patch 2 would have to duplicate scorer logic again and the later kill-ticket path would have no single server-side authority point.
+
+### Components Delivered
+
+| # | File | Function Name | Purpose |
+|---|---|---|---|
+| 1 | `hostiles/wbk/fn_wbkResolveScorer.sqf` | `EJ_fnc_wbkResolveScorer` | **NEW** — shared scorer resolver for owner-local handlers and bootstrap fallback paths |
+| 2 | `hostiles/wbk/fn_wbkCommitHitAndMaybeKill.sqf` | `EJ_fnc_wbkCommitHitAndMaybeKill` | **NEW** — server commit point for authoritative hit-score + kill-ticket writes |
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_wbkResolveScorer.sqf` | Added shared scorer-resolution helper using `_shooter`, optional `_projectile` / `getShotParents`, and `EJ_paraOwner` fallback |
+| `hostiles/wbk/fn_wbkCommitHitAndMaybeKill.sqf` | Added authoritative server commit core with sequence dedup, hit-score award, `points[]` append, hit-marker emission, and lethal kill-ticket staging |
+| `hostiles/wbk/fn_wbkHitPartScore.sqf` | Switched existing bridge scorer resolution to call `EJ_fnc_wbkResolveScorer` instead of duplicating the logic inline |
+| `hostiles/wbk/Functions.hpp` | Added `class wbkResolveScorer {};` and `class wbkCommitHitAndMaybeKill {};` |
+| `description.ext` | Added `class wbkCommitHitAndMaybeKill{};` to `CfgRemoteExec` |
+
+### Global Variables
+
+| Variable | Set By | Scope | Purpose |
+|---|---|---|---|
+| `EJ_wbkLastCommittedSeq` | `fn_wbkCommitHitAndMaybeKill` | Per-unit (`setVariable`, not public) | Sequence dedup key for authoritative server commits |
+| `EJ_pendingKillScorer` | `fn_wbkCommitHitAndMaybeKill` | Per-unit (`setVariable`, not public) | Kill-ticket scorer written before lethal engine damage |
+| `EJ_pendingKillSeq` | `fn_wbkCommitHitAndMaybeKill` | Per-unit (`setVariable`, not public) | Kill-ticket sequence used by later `fn_killed` consumption |
+
+### Performance Notes
+
+Patch 1 adds no PFHs, no polling loops, and no new steady-state scans. The new commit helper is per-hit only, and at this stage it is foundational code for later patches rather than an already-live hot path.
+

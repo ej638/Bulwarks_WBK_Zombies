@@ -219,13 +219,17 @@ _unit addMPEventHandler ["MPHit", {
     // Always update last scorer for Killed EH instigator fallback
     _unit setVariable ["EJ_lastScorer", _scorer];
 
-    // Dedup: if HitPart bridge already scored this hit (within 50ms), skip
-    // flat scoring (HitPart provides more precise damage-based scoring).
+    // Symmetric dedup: if HitPart bridge already scored this hit (within 50ms),
+    // skip flat scoring — HitPart provides more precise damage-based scoring.
     private _lastHPTime = _unit getVariable ["EJ_lastHitPartTime", -1];
     if (diag_tickTime - _lastHPTime < 0.05) exitWith {};
 
     // Award flat hit score (can't get ammo data from MPHit, so use average)
     private _scoreVal = SCORE_HIT + (SCORE_DAMAGE_BASE * 0.5);
+
+    // Record award time so HitPart can detect if we got here first.
+    // HitPart checks EJ_lastMPHitTime and skips its score if we already fired.
+    _unit setVariable ["EJ_lastMPHitTime", diag_tickTime];
 
     [_scorer, _scoreVal] call killPoints_fnc_add;
 
