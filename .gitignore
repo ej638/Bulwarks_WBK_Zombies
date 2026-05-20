@@ -3,6 +3,7 @@
 *.bidry
 *.bisurf
 /tmp/
+/docs/generated/
 
 /Webknights Melee
 /Webknights Zombies

@@ -1,21 +1,19 @@
 /**
  *  fn_wbkHitPartScore
  *
- *  Core Adapter — Phase 1 / Phase 3 (Dedicated-Server + HC fix)
- *  Bridges WBK synthetic damage into the Bulwarks scoring pipeline.
- *
- *  WBK zombies call allowDamage false every tick, which breaks the
- *  vanilla Arma "Hit" EH (damage is always 0). This function reads
- *  the ammo config data and mirrors the WBK damage calculation to
- *  derive a normalised damage value for scoring.
- *
- *  Called in two ways (both via fn_registerHitPartBridge relay):
- *    - Directly on server when the zombie is server-local
- *    - Via remoteExecCall from a Headless Client when the zombie
- *      has been offloaded
+ *  Patch 6 — compatibility wrapper.
+ *  The observer-bridge scorer is no longer part of the live correctness
+ *  contract. Keep the old fallback logic temporarily during rollout, but
+ *  log whenever this path is reached unexpectedly and refuse to score once
+ *  the authoritative hook is already marked ready.
  *
  *  Expected params (pre-extracted by the relay wrapper):
- *    [_target, _shooter, _shotParents, _selection, _ammo]
+ *    [_target, _shooter, _shotParents, _selection, _ammo,
+ *     _preHitSynthHP, _wasAliveAtHit, _hitEventTime]
+ *
+ *  _preHitSynthHP  — WBK_SynthHP captured at HitPart event-fire time
+ *  _wasAliveAtHit  — alive state of target at HitPart event-fire time
+ *  _hitEventTime   — diag_tickTime at HitPart event-fire time (for dedup)
  *
  *  Domain: Server only (relay ensures this)
  */
@@ -27,47 +25,47 @@ params [
     "_shooter",
     "_shotParents",
     "_selection",
-    "_ammo"
+    "_ammo",
+    ["_preHitSynthHP", -1],
+    ["_wasAliveAtHit", true],
+    ["_hitEventTime",  -1]
 ];
 
-// --- Guard: no self-hits, no dead targets ---
+if (isNull _target) exitWith {};
+
+diag_log format [
+    "[EJ] COMPAT: legacy wbkHitPartScore reached for %1. ready=%2 verified=%3 hitTime=%4",
+    typeOf _target,
+    _target getVariable ["EJ_wbkScoreHookReady", false],
+    _target getVariable ["EJ_wbkScoreHookVerified", false],
+    _hitEventTime
+];
+
+if (_target getVariable ["EJ_wbkScoreHookVerified", false]) exitWith {};
+
+// --- Guard: no self-hits ---
 if (_target == _shooter) exitWith {};
-if (!alive _target)      exitWith {};
 
-// Resolve the actual player who caused the hit
-// _shooter may be a vehicle; use pre-extracted _shotParents
-// (_projectile may have despawned during remoteExec transit)
-private _scorer = if (isPlayer _shooter) then {
-    _shooter
-} else {
-    if (count _shotParents > 1 && { isPlayer (_shotParents select 1) }) then {
-        _shotParents select 1
-    } else {
-        if (count _shotParents > 0 && { isPlayer (_shotParents select 0) }) then {
-            _shotParents select 0
-        } else {
-            objNull
-        };
-    };
-};
-
-// Paratrooper AI fallback: if the shooter is not a player, check if it is
-// an AI owned by a player (EJ_paraOwner). This covers WBK zombie kills by
-// paratroopers — WBK's setDamage 1 strips the instigator from MPKilled, so
-// EJ_lastScorer is the only reliable attribution path for these units.
-if (isNull _scorer) then {
-    private _owner = _shooter getVariable ["EJ_paraOwner", objNull];
-    if (!isNull _owner && {isPlayer _owner}) then {
-        _scorer = _owner;
-    };
-};
+// Resolve the actual player who caused the hit via the shared Patch 1 helper.
+private _scorer = [_shooter, objNull, _shotParents] call EJ_fnc_wbkResolveScorer;
 
 if (isNull _scorer || !isPlayer _scorer) exitWith {};
 
-// --- Track last scorer for Killed EH fallback ---
-// WBK kills via setDamage 1 which may not pass instigator across the
-// network boundary on dedicated server. This gives fn_killed a fallback.
+// --- Persist scorer BEFORE any further validity exits ---
+// EJ_lastScorer is kill-attribution state, not a hit-score side effect.
+// fn_killed needs it even if this hit is suppressed by dedup or pre-hit
+// validity checks. This guarantees attribution for first-hit lethal kills
+// where MPKilled fires before our relay arrives.
 _target setVariable ["EJ_lastScorer", _scorer];
+
+// --- Pre-hit validity guard (replaces post-hit liveness check) ---
+// Reject corpse hits: if the target was dead when HitPart fired, there is
+// no real damage to score. Also reject stale relay payloads where WBK had
+// already zeroed synthetic HP before the event was raised.
+// Do NOT exit merely because the target is dead now — terminal hits arrive
+// after WBK forces setDamage 1 and the unit may already be dead on server.
+if (!_wasAliveAtHit) exitWith {};
+if (_preHitSynthHP <= 0) exitWith {};
 
 // --- Determine the effective damage this hit dealt ---
 // Mirror WBK's HitPart priority chain (simplified for scoring only):
@@ -111,6 +109,10 @@ if (_explosive >= 0.7) then {
 
 if (_effectiveDmg <= 0) exitWith {};
 
+// --- Clamp to remaining synthetic HP (prevents overkill over-credit) ---
+// _preHitSynthHP is guaranteed > 0 by the guard above.
+_effectiveDmg = _effectiveDmg min _preHitSynthHP;
+
 // --- Normalise damage to a 0–1 range for fn_hit parity ---
 // EJ_wbk_maxHP is snapshotted from WBK_SynthHP at spawn time
 private _maxHP  = _target getVariable ["EJ_wbk_maxHP", 50];
@@ -119,10 +121,18 @@ private _normDmg = (_effectiveDmg / _maxHP) min 1;
 // --- Award score identically to score/functions/fn_hit.sqf ---
 private _scoreVal = SCORE_HIT + (SCORE_DAMAGE_BASE * _normDmg);
 
-// Mark this hit as scored by HitPart (for MPHit dedup).
-// MPHit also fires for the same hit; if this timestamp is recent,
-// MPHit skips its flat scoring since HitPart has more precise data.
+// --- Symmetric dedup ---
+// Mark this event for MPHit (MPHit skips flat score if this is recent).
+// Then check if MPHit already awarded this impact: if so, skip our award
+// to avoid double-scoring. EJ_lastScorer is already persisted above.
+private _lastMPHitTime = _target getVariable ["EJ_lastMPHitTime", -1];
 _target setVariable ["EJ_lastHitPartTime", diag_tickTime];
+
+if (diag_tickTime - _lastMPHitTime < 0.05) exitWith {
+    // MPHit already awarded a score for this impact; skip double-award.
+    diag_log format ["[EJ] HitPart dedup: MPHit won race on %1 (delta=%2ms), skipping score.",
+        typeOf _target, round ((diag_tickTime - _lastMPHitTime) * 1000)];
+};
 
 // Add to player's total score
 [_scorer, _scoreVal] call killPoints_fnc_add;

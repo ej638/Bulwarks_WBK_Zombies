@@ -1,5 +1,6 @@
 waitUntil {!isNil "bulwarkBox"};
 player setVariable ["buildItemHeld", false];
+player setUnitTrait ["medic", true];
 
 // WBK revive bridge: overrides WBK_CreateDamage + installs revive-aware HandleDamage EH
 call EJ_fnc_initPlayerReviveBridge;

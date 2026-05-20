@@ -4,6 +4,7 @@ player enableStamina FALSE;
 "START_KILLPOINTS" call BIS_fnc_getParamValue;
 player setVariable ["RevByMedikit", false, true];
 player setVariable ["buildItemHeld", false];
+player setUnitTrait ["medic", true];
 
 // Lower recoil, lower sway, remove stamina on respawn
 player addEventHandler ['Respawn',{
