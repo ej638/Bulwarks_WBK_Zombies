@@ -58,6 +58,14 @@ Each WBK zombie runs 3 CBA PFHs, so at wave-scale unit counts the mod alone gene
 | `docs/integration/adapter_design_spec.md` | Authoritative architecture and spec (Spec §) |
 
 ---
+## Implementation and Coding
+When finished an implementation and coding phase, provide the user with a phase end summary.
+- What was implemented
+- The parts of the design/plan that are completed
+- If the design/plan was followed or if there was any deviation
+- What the user or agent should do next
+
+---
 
 ## Think Before Coding
 
