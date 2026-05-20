@@ -2892,3 +2892,412 @@ This edge case was only reachable after the medic trait fix enabled manual teamm
 - One `setUnitTrait` call per player join and per respawn. Negligible.
 - The IMS flag check adds two `getVariable` reads and one `setVariable` to an already-running 1-second PFH. Negligible.
 
+---
+
+## Hotfix: Issue #10 — Instant-Kill Zombie Scoring (First-Hit Lethal Attribution)
+
+**Date:** 2026-05-15
+**Status:** Implemented, pending in-game validation
+
+### Problem
+
+When a WBK zombie died from the very first damage event it received (first-hit lethal — headshot, GM6, explosive), players received neither a hit score nor a kill score. The zombie appeared to count as a zero-value kill.
+
+### Root Cause (from RCA in `docs/generated/issue-10-instant-kill-zombie-scoring-rca.md`)
+
+A fatal timing window existed in the HitPart bridge:
+
+1. WBK's own HitPart handler fires first (registration order) and depletes `WBK_SynthHP` to zero, calling `setDamage 1`.
+2. `MPKilled` fires on the server; `_instigator` may be null (WBK strips it across the network boundary).
+3. `EJ_lastScorer` has not yet been written (the bridge hasn't run yet).
+4. Our HitPart bridge EH fires — but `fn_wbkHitPartScore` immediately exits on `!alive _target`.
+
+Result: `fn_killed` has no valid instigator and no fallback scorer → zero kill credit. No hit score was ever awarded for the terminal shot.
+
+A secondary risk also existed: once the `!alive` exit was removed, a post-death HitPart relay could double-score if `MPHit` had already awarded a flat score during the same impact (no symmetric dedup on the HitPart side).
+
+### Fix — Three-layer adapter change
+
+**Layer 1 — Pre-hit state capture in relay (`fn_registerHitPartBridge.sqf`)**
+
+The HitPart EH now captures three additional values at event-fire time, before the relay reaches the server:
+- `_preHitSynthHP`: `WBK_SynthHP` at event time — proves synthetic HP was positive when the event fired
+- `_wasAliveAtHit`: `alive _target` at event time — distinguishes a real terminal hit from a post-mortem shot
+- `_hitEventTime`: `diag_tickTime` for diagnostics and dedup correlation
+
+These are appended to `_extractedData` (8-element array, was 5).
+
+**Layer 2 — Reworked guard + early scorer persistence (`fn_wbkHitPartScore.sqf`)**
+
+The function was restructured to separate kill attribution from hit scoring:
+
+1. Self-hit guard kept as-is.
+2. Scorer is resolved immediately.
+3. `EJ_lastScorer` is written **before** any validity-based exit — guaranteeing `fn_killed` has a fallback even if the hit itself is later rejected.
+4. The old `if (!alive _target) exitWith {}` is replaced with a pre-hit validity guard:
+   - Exit if `!_wasAliveAtHit` (corpse hit — target was already dead when HitPart fired)
+   - Exit if `_preHitSynthHP <= 0` (stale/invalid relay — WBK already zeroed HP before event fired)
+5. After damage calculation, `_effectiveDmg` is clamped to `_preHitSynthHP` to prevent overkill over-credit.
+
+**Layer 3 — Symmetric dedup (`fn_spawnWBKUnit.sqf` + `fn_wbkHitPartScore.sqf`)**
+
+The old dedup was one-way: MPHit checked `EJ_lastHitPartTime` and skipped if HitPart was recent. Removing the dead-target exit created a double-score risk in the opposite ordering (MPHit awards first, HitPart arrives later on the same impact). Dedup is now symmetric:
+
+- **MPHit side:** After awarding a score, records `EJ_lastMPHitTime = diag_tickTime`.
+- **HitPart side:** Always marks `EJ_lastHitPartTime` for MPHit's existing check. Then checks `EJ_lastMPHitTime`; if MPHit fired within 50ms, exits without awarding a second score (attribution is still persisted above).
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_registerHitPartBridge.sqf` | Capture `_preHitSynthHP`, `_wasAliveAtHit`, `_hitEventTime` at HitPart event-fire time; extend `_extractedData` to 8 elements |
+| `hostiles/wbk/fn_wbkHitPartScore.sqf` | Update params (3 new with defaults); remove `!alive _target` exit; move `EJ_lastScorer` persistence before validity exits; add pre-hit validity guard; add `_effectiveDmg min _preHitSynthHP` overkill clamp; add symmetric dedup check against `EJ_lastMPHitTime` |
+| `hostiles/wbk/fn_spawnWBKUnit.sqf` | MPHit handler: record `EJ_lastMPHitTime` after awarding score for symmetric dedup |
+
+### Global Variables
+
+| Variable | Set By | Scope | Purpose |
+|---|---|---|---|
+| `EJ_lastMPHitTime` | `fn_spawnWBKUnit` (MPHit handler) | Per-unit (`setVariable`) | Timestamp of last MPHit score award; HitPart checks this to avoid double-scoring when MPHit wins the race |
+
+### Invariants After Fix
+
+| Scenario | EJ_lastScorer | Hit score | Kill score |
+|---|---|---|---|
+| First-hit lethal (HitPart wins race) | Set before validity exit | One precise award | From EJ_lastScorer fallback |
+| First-hit lethal (MPHit wins race) | Set by MPHit handler (unchanged) | One flat award | From EJ_lastScorer fallback |
+| Multi-hit kill (non-lethal then lethal) | Set on each hit | One award per hit | From EJ_lastScorer or engine instigator |
+| Corpse hit (target already dead at event fire) | Not overwritten | Zero (rejected by !_wasAliveAtHit) | N/A |
+| Post-death relay duplicate | Not overwritten | Zero (rejected by _preHitSynthHP <= 0) | N/A |
+
+### Performance Notes
+
+Three `getVariable` reads added to the HitPart relay path (per hit, per unit, on the machine where the EH fires). All occur inside the existing HitPart EH body — no new PFH or polling loop. Cost is negligible compared to the WBK mod's 0.01–0.1s per-unit PFH baseline.
+
+### Patch 1 — Authoritative Commit Core (2026-05-19)
+
+**Status:** Implemented, not yet wired into the live authoritative `HitPart` path
+
+### Problem
+
+The authoritative Issue #10 plan required two new primitives that did not yet exist in the adapter:
+
+1. scorer resolution still lived inline inside `fn_wbkHitPartScore.sqf` instead of in a reusable helper that future owner-local handlers could call directly,
+2. there was no dedicated server commit function that could persist scorer state, append the hit score, and write a kill ticket before triggering the lethal engine kill.
+
+Without those building blocks, Patch 2 would have to duplicate scorer logic again and the later kill-ticket path would have no single server-side authority point.
+
+### Components Delivered
+
+| # | File | Function Name | Purpose |
+|---|---|---|---|
+| 1 | `hostiles/wbk/fn_wbkResolveScorer.sqf` | `EJ_fnc_wbkResolveScorer` | **NEW** — shared scorer resolver for owner-local handlers and bootstrap fallback paths |
+| 2 | `hostiles/wbk/fn_wbkCommitHitAndMaybeKill.sqf` | `EJ_fnc_wbkCommitHitAndMaybeKill` | **NEW** — server commit point for authoritative hit-score + kill-ticket writes |
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_wbkResolveScorer.sqf` | Added shared scorer-resolution helper using `_shooter`, optional `_projectile` / `getShotParents`, and `EJ_paraOwner` fallback |
+| `hostiles/wbk/fn_wbkCommitHitAndMaybeKill.sqf` | Added authoritative server commit core with sequence dedup, hit-score award, `points[]` append, hit-marker emission, and lethal kill-ticket staging |
+| `hostiles/wbk/fn_wbkHitPartScore.sqf` | Switched existing bridge scorer resolution to call `EJ_fnc_wbkResolveScorer` instead of duplicating the logic inline |
+| `hostiles/wbk/Functions.hpp` | Added `class wbkResolveScorer {};` and `class wbkCommitHitAndMaybeKill {};` |
+| `description.ext` | Added `class wbkCommitHitAndMaybeKill{};` to `CfgRemoteExec` |
+
+### Global Variables
+
+| Variable | Set By | Scope | Purpose |
+|---|---|---|---|
+| `EJ_wbkLastCommittedSeq` | `fn_wbkCommitHitAndMaybeKill` | Per-unit (`setVariable`, not public) | Sequence dedup key for authoritative server commits |
+| `EJ_pendingKillScorer` | `fn_wbkCommitHitAndMaybeKill` | Per-unit (`setVariable`, not public) | Kill-ticket scorer written before lethal engine damage |
+| `EJ_pendingKillSeq` | `fn_wbkCommitHitAndMaybeKill` | Per-unit (`setVariable`, not public) | Kill-ticket sequence used by later `fn_killed` consumption |
+
+### Performance Notes
+
+Patch 1 adds no PFHs, no polling loops, and no new steady-state scans. The new commit helper is per-hit only, and at this stage it is foundational code for later patches rather than an already-live hot path.
+
+### Patch 2 — Authoritative HitPart Handlers + Installer (2026-05-19)
+
+**Status:** Implemented, not yet wired into the spawn/install path
+
+### Problem
+
+Patch 1 added the server commit core, but there was still no authoritative owner-local replacement for the stock WBK `HitPart` path. The adapter still depended on the observer bridge and had no installer that could:
+
+1. choose the locked handler family from Patch 0,
+2. replace WBK's `HitPart` handler on the correct object,
+3. mirror the family-specific synthetic-HP mutation path before sending the server commit.
+
+### Fix — New owner-local handler family set
+
+Patch 2 adds a dedicated installer plus one handler per locked family:
+
+- `standard` — shared regular-zombie path with subtype-specific leg behavior for Shambler, Runner, and Screamer,
+- `leaper` — no explosive branch; head/body only,
+- `bloater` — explosive x2 and body x1 only,
+- `smasher` — conservative dedicated incoming-hit path using the documented stun trigger while avoiding unsupported standard-family assumptions,
+- `goliath` — hitbox-based path with documented invulnerability windows and stagger trigger.
+
+The installer snapshots `EJ_wbk_maxHP`, marks `EJ_wbkHitFamily`, and sets `EJ_wbkScoreHookReady` only after the authoritative handler is attached.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_installAuthoritativeHitPart.sqf` | **NEW** — owner-local installer; resolves family, resolves Goliath hitbox, removes existing `HitPart` EHs, installs authoritative handler, snapshots `EJ_wbk_maxHP`, sets readiness + diagnostics |
+| `hostiles/wbk/fn_wbkHitPartStandard.sqf` | **NEW** — standard family handler with Shambler/Runner/Screamer leg-side-effect branches |
+| `hostiles/wbk/fn_wbkHitPartLeaper.sqf` | **NEW** — Leaper head/body authoritative handler |
+| `hostiles/wbk/fn_wbkHitPartBloater.sqf` | **NEW** — Bloater explosive/body authoritative handler |
+| `hostiles/wbk/fn_wbkHitPartSmasher.sqf` | **NEW** — conservative dedicated Smasher authoritative handler using the documented stun trigger |
+| `hostiles/wbk/fn_wbkHitPartGoliath.sqf` | **NEW** — Goliath hitbox authoritative handler with invulnerability-window and stagger checks |
+| `hostiles/wbk/Functions.hpp` | Added function declarations for installer and all five family handlers |
+| `description.ext` | Added `installAuthoritativeHitPart` to `CfgRemoteExec` for later owner-local installation dispatch |
+
+### Global Variables
+
+| Variable | Set By | Scope | Purpose |
+|---|---|---|---|
+| `EJ_wbkHitSeq` | Family handlers | Per-unit (`setVariable`, not public) | Owner-local monotonic hit sequence for authoritative commit payloads |
+| `EJ_wbkScoreHookReady` | `fn_installAuthoritativeHitPart` | Per-unit (`setVariable`, public) | Marks that the authoritative handler is installed and live |
+| `EJ_wbkHitFamily` | `fn_installAuthoritativeHitPart` | Per-unit (`setVariable`, public) | Diagnostic family tag installed on the unit |
+| `EJ_wbkAuthoritativeHitPartId` | `fn_installAuthoritativeHitPart` | Per-unit (`setVariable`, not public) | Installed event-handler id for the authoritative `HitPart` hook |
+| `EJ_wbkOwnerUnit` | `fn_installAuthoritativeHitPart` | Hook object (`setVariable`, not public) | Maps proxy hook objects such as the Goliath hitbox back to the owning WBK unit |
+
+### Notes / Limits
+
+1. **Goliath hitbox resolution:** The bundled audit material documents the `Goliath_HitBox` proxy object but not a guaranteed variable name. The installer therefore resolves the hitbox conservatively from attached objects of type `Goliath_HitBox` and logs failure instead of silently falling back to the wrong object.
+2. **Smasher incoming-hit parity:** The available Smasher source-derived docs confirmed a dedicated family and stun trigger, but not the full stock branch body. The Patch 2 Smasher handler therefore avoids assuming standard-family branch parity and keeps damage conservative until the live path is validated.
+
+### Performance Notes
+
+Patch 2 adds no PFHs and no persistent polling. The only timed behavior added here is the documented per-hit cooldown reset for Smasher/Goliath stagger gating, and those only run when the documented stun conditions are met.
+
+### Patch 3 — Spawn-Time Authoritative Install (2026-05-19)
+
+**Status:** Implemented, pending in-game validation
+
+### Problem
+
+Even after Patch 2, live units were still wired through the old deferred observer path in `fn_spawnWBKUnit.sqf`. The spawn flow still:
+
+1. waited for `WBK_AI_AttachedHandlers`,
+2. slept a fixed 1.0s,
+3. registered `fn_registerHitPartBridge` on the unit owner.
+
+That meant the authoritative handlers existed in the repo but were not the runtime path yet. It also preserved the single-attempt install race that the authoritative plan was meant to remove.
+
+### Fix
+
+The deferred bridge install block in `fn_spawnWBKUnit.sqf` was replaced with a bounded init-time authoritative install loop:
+
+- wait for `WBK_AI_AttachedHandlers` or timeout,
+- for a short startup window, repeatedly dispatch `EJ_fnc_installAuthoritativeHitPart` to the current unit owner with `markReady=false`,
+- perform a final install attempt with `markReady=true`,
+- log if the unit never reports `EJ_wbkScoreHookReady` by the end of the window.
+
+This removes the old single fixed `sleep 1.0` dependency and gives the adapter multiple chances to win the one-time WBK `removeAllEventHandlers "HitPart"` race during unit startup.
+
+### Adjacent Bootstrap Change
+
+Once the authoritative handlers were wired in, leaving MPHit as the old primary scoring path would have caused double-awards. `MPHit` in `fn_spawnWBKUnit.sqf` therefore moved to the planned bootstrap-only role at the same time:
+
+- while `EJ_wbkScoreHookReady` is `false`, MPHit can still award the flat fallback score,
+- once `EJ_wbkScoreHookReady` is `true`, MPHit stops awarding score.
+
+To preserve symmetric dedup during the bootstrap window, `fn_wbkCommitHitAndMaybeKill.sqf` now records `EJ_lastHitPartTime` and suppresses its own hit-score award when `EJ_lastMPHitTime` shows MPHit already won the race on the same impact.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_spawnWBKUnit.sqf` | Replaced deferred `registerHitPartBridge` block with bounded authoritative install dispatch; changed MPHit from primary scorer to bootstrap fallback gated by `EJ_wbkScoreHookReady` |
+| `hostiles/wbk/fn_installAuthoritativeHitPart.sqf` | Added optional `_markReady` param so retry attempts can install the handler without marking the unit ready until the final bounded attempt |
+| `hostiles/wbk/fn_wbkCommitHitAndMaybeKill.sqf` | Added authoritative-hit vs MPHit symmetric dedup (`EJ_lastHitPartTime` / `EJ_lastMPHitTime`) for the bootstrap window |
+
+### Performance Notes
+
+Patch 3 keeps the retry behavior bounded to unit startup only. The new retry loop is not a PFH and does not persist past the short install window, so the change does not add continuous wave-time polling.
+
+### Patch 4 — Kill-Ticket Attribution in `fn_killed` (2026-05-19)
+
+**Status:** Implemented, pending in-game validation
+
+### Problem
+
+After Patch 3, the runtime had an authoritative hit transaction and a server-written kill ticket, but `fn_killed.sqf` still used the pre-authoritative fallback order:
+
+1. direct player `_instigator`,
+2. `EJ_lastScorer`,
+3. `EJ_paraOwner`.
+
+That meant the dedicated kill ticket written by `fn_wbkCommitHitAndMaybeKill.sqf` was not yet part of kill attribution, and stale `EJ_pendingKillScorer` / `EJ_pendingKillSeq` values could remain attached to dead bodies after the death event ran.
+
+### Fix
+
+`fn_killed.sqf` now uses the Patch 4 order from the Issue #10 plan:
+
+1. direct player `_instigator` if present,
+2. `EJ_pendingKillScorer`,
+3. existing `EJ_lastScorer`,
+4. `EJ_paraOwner` fallback when relevant.
+
+The function also clears `EJ_pendingKillScorer` and `EJ_pendingKillSeq` at the end of the death event whenever a pending ticket was present, so dead bodies cannot retain stale lethal-ticket state.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `score/functions/fn_killed.sqf` | Added pending-kill-ticket fallback order, preserved para-owner fallback, and clears stale `EJ_pendingKillScorer` / `EJ_pendingKillSeq` on dead bodies |
+
+### Performance Notes
+
+Patch 4 adds only a few per-death `getVariable` / `setVariable` calls on the server and no new loop or PFH behavior.
+
+### Patch 6 — Legacy Observer Functions Re-Scoped (2026-05-19)
+
+**Status:** Implemented, pending in-game validation
+
+### Problem
+
+After Patches 2–4, the old observer-path functions were no longer the intended live correctness path, but they still existed in their original form:
+
+- `fn_registerHitPartBridge.sqf` could still recreate the legacy additive `HitPart` observer bridge,
+- `fn_wbkHitPartScore.sqf` still behaved like a normal scoring function instead of an explicit compatibility surface.
+
+That left rollout risk in two directions:
+
+1. an unexpected old call site could silently reactivate the observer path,
+2. if the legacy score bridge fired on a unit that already had the authoritative hook ready, it could still try to behave like a normal scorer instead of clearly identifying itself as deprecated.
+
+### Fix
+
+Patch 6 keeps both functions for one rollout window, but re-scopes them as explicit compatibility wrappers:
+
+- `fn_registerHitPartBridge.sqf` now logs unexpected use and forwards directly to `EJ_fnc_installAuthoritativeHitPart` instead of recreating the old observer EH,
+- `fn_wbkHitPartScore.sqf` now logs unexpected observer-path use and immediately exits if `EJ_wbkScoreHookReady` is already true, so the legacy path cannot keep scoring once the authoritative hook is live.
+
+The legacy scorer body is intentionally retained only for the not-ready compatibility case during rollout.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_registerHitPartBridge.sqf` | Replaced legacy bridge registration with diagnostic compatibility wrapper that forwards to `EJ_fnc_installAuthoritativeHitPart` |
+| `hostiles/wbk/fn_wbkHitPartScore.sqf` | Added compatibility diagnostics and readiness guard so the legacy observer scorer cannot remain active after authoritative install |
+
+### Performance Notes
+
+Patch 6 adds only diagnostic logging and one readiness check on the legacy fallback path. No new loop, PFH, or steady-state polling was introduced.
+
+### Patch 7 — Function Registration + RemoteExec Surface (2026-05-19)
+
+**Status:** Completed via prior authoritative-path patches; no further runtime code changes were required
+
+### Problem
+
+The authoritative scoring branch introduced a new installer, a new server commit function, and five family-specific HitPart handlers. Patch 7 required a validation checkpoint to ensure those new functions were actually registered in the mission function surface and that only the functions which truly need RemoteExec access were exposed there.
+
+### Result
+
+The current registration state matches the Patch 7 plan:
+
+- `hostiles/wbk/Functions.hpp` already declares the full authoritative function set:
+  - `installAuthoritativeHitPart`
+  - `wbkCommitHitAndMaybeKill`
+  - `wbkResolveScorer`
+  - `wbkHitPartStandard`
+  - `wbkHitPartLeaper`
+  - `wbkHitPartBloater`
+  - `wbkHitPartSmasher`
+  - `wbkHitPartGoliath`
+- `description.ext` already exposes the installer and the server commit through `CfgRemoteExec`, which is the only explicit RemoteExec access the authoritative runtime path needs.
+
+The legacy observer-path entries remain present during rollout because Patch 6 deliberately kept those functions as compatibility wrappers rather than deleting them outright.
+
+### Files Reviewed / Confirmed
+
+| File | Confirmation |
+|---|---|
+| `hostiles/wbk/Functions.hpp` | Full authoritative function set is registered in CfgFunctions |
+| `description.ext` | `installAuthoritativeHitPart` and `wbkCommitHitAndMaybeKill` are available in `CfgRemoteExec`; legacy wrapper entries remain during rollout |
+
+### Performance Notes
+
+Patch 7 was a registration checkpoint only. No new runtime logic, no PFHs, and no additional polling behavior were introduced here.
+
+### Hotfix: Issue #10 Authoritative Runtime Regression — Handler Payload Contract + Verified Hook Gating (2026-05-19)
+
+**Status:** Implemented, pending in-game validation
+
+### Problem
+
+LAN validation exposed a hard regression after the authoritative rollout:
+
+- zombies no longer took damage,
+- one-shot and ordinary firearms both failed to kill them,
+- no hit markers appeared,
+- score no longer incremented.
+
+### Root Cause
+
+Two implementation problems combined into a full damage-path failure:
+
+1. **Authoritative family-handler entry contract was wrong.**
+
+`fn_installAuthoritativeHitPart.sqf` forwards the raw inner HitPart payload with calls like:
+
+```sqf
+(_this select 0) call EJ_fnc_wbkHitPartStandard;
+```
+
+But each family handler was written as though it would receive a wrapper array containing that payload:
+
+```sqf
+params ["_eventData"];
+_eventData params [...];
+```
+
+In SQF that binds `_eventData` to the first element of the payload (`_target`), not to the full event array. The next destructure step therefore failed, so the handler exited before it could mutate `WBK_SynthHP` or send the server commit.
+
+2. **Bootstrap fallback shut off too early.**
+
+`MPHit` fallback was suppressed by `EJ_wbkScoreHookReady`, which only meant that an EH id had been installed — not that the authoritative handler had actually executed successfully. Once the broken handler was installed, the fallback scorer shut off too.
+
+Because WBK's stock `HitPart` handler had already been removed and WBK AI keeps `allowDamage false` active, this left the zombies with no remaining working damage path.
+
+### Fix
+
+The corrective change implements the first three remediation steps from the RCA:
+
+1. **Fix the handler entry contract**
+  All five authoritative family handlers now destructure the raw HitPart event payload directly from `_this` instead of wrapping it in an extra `_eventData` param layer.
+
+2. **Add defensive payload guards**
+  Each authoritative family handler now validates that `_this` is an array with the expected minimum shape before doing any game logic. Invalid payloads log explicitly to RPT instead of failing silently.
+
+3. **Separate installed vs verified hook state**
+  New per-unit variable `EJ_wbkScoreHookVerified` is reset on install and set only when an authoritative family handler successfully parses a live event and reaches runtime logic. MPHit bootstrap fallback is now suppressed only by the verified flag, not by install-ready state alone.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_wbkHitPartStandard.sqf` | Fixed payload destructuring; added invalid-payload guard; marks `EJ_wbkScoreHookVerified` once handler executes successfully |
+| `hostiles/wbk/fn_wbkHitPartLeaper.sqf` | Fixed payload destructuring; added invalid-payload guard; marks `EJ_wbkScoreHookVerified` |
+| `hostiles/wbk/fn_wbkHitPartBloater.sqf` | Fixed payload destructuring; added invalid-payload guard; marks `EJ_wbkScoreHookVerified` |
+| `hostiles/wbk/fn_wbkHitPartSmasher.sqf` | Fixed payload destructuring; added invalid-payload guard; marks `EJ_wbkScoreHookVerified` |
+| `hostiles/wbk/fn_wbkHitPartGoliath.sqf` | Fixed payload destructuring; added invalid-payload guard; marks `EJ_wbkScoreHookVerified` |
+| `hostiles/wbk/fn_installAuthoritativeHitPart.sqf` | Resets `EJ_wbkScoreHookVerified` during install / install-failure paths; enhanced install diagnostics |
+| `hostiles/wbk/fn_spawnWBKUnit.sqf` | MPHit bootstrap fallback now gates on `EJ_wbkScoreHookVerified` instead of `EJ_wbkScoreHookReady`; comments updated to match runtime contract |
+| `hostiles/wbk/fn_wbkHitPartScore.sqf` | Legacy compatibility scorer now uses verified-hook state in diagnostics and exit guard |
+
+### Global Variables
+
+| Variable | Set By | Scope | Purpose |
+|---|---|---|---|
+| `EJ_wbkScoreHookVerified` | authoritative family handlers / installer | Per-unit (`setVariable`, public) | Distinguishes “authoritative hook installed” from “authoritative hook has actually executed successfully” |
+
+### Performance Notes
+
+This corrective change adds only one payload-shape check and one verification write on the authoritative HitPart path. No new PFHs or persistent polling loops were introduced.
+

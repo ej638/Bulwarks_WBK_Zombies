@@ -4,6 +4,14 @@ class EJ
     {
         file = "hostiles\wbk";
         class spawnWBKUnit {};
+        class installAuthoritativeHitPart {};
+        class wbkResolveScorer {};
+        class wbkCommitHitAndMaybeKill {};
+        class wbkHitPartStandard {};
+        class wbkHitPartLeaper {};
+        class wbkHitPartBloater {};
+        class wbkHitPartSmasher {};
+        class wbkHitPartGoliath {};
         class wbkHitPartScore {};
         class registerHitPartBridge {};
         class initWBKRegistry {};
