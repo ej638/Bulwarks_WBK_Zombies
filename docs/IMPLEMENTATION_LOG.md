@@ -3118,3 +3118,38 @@ To preserve symmetric dedup during the bootstrap window, `fn_wbkCommitHitAndMayb
 
 Patch 3 keeps the retry behavior bounded to unit startup only. The new retry loop is not a PFH and does not persist past the short install window, so the change does not add continuous wave-time polling.
 
+### Patch 4 — Kill-Ticket Attribution in `fn_killed` (2026-05-19)
+
+**Status:** Implemented, pending in-game validation
+
+### Problem
+
+After Patch 3, the runtime had an authoritative hit transaction and a server-written kill ticket, but `fn_killed.sqf` still used the pre-authoritative fallback order:
+
+1. direct player `_instigator`,
+2. `EJ_lastScorer`,
+3. `EJ_paraOwner`.
+
+That meant the dedicated kill ticket written by `fn_wbkCommitHitAndMaybeKill.sqf` was not yet part of kill attribution, and stale `EJ_pendingKillScorer` / `EJ_pendingKillSeq` values could remain attached to dead bodies after the death event ran.
+
+### Fix
+
+`fn_killed.sqf` now uses the Patch 4 order from the Issue #10 plan:
+
+1. direct player `_instigator` if present,
+2. `EJ_pendingKillScorer`,
+3. existing `EJ_lastScorer`,
+4. `EJ_paraOwner` fallback when relevant.
+
+The function also clears `EJ_pendingKillScorer` and `EJ_pendingKillSeq` at the end of the death event whenever a pending ticket was present, so dead bodies cannot retain stale lethal-ticket state.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `score/functions/fn_killed.sqf` | Added pending-kill-ticket fallback order, preserved para-owner fallback, and clears stale `EJ_pendingKillScorer` / `EJ_pendingKillSeq` on dead bodies |
+
+### Performance Notes
+
+Patch 4 adds only a few per-death `getVariable` / `setVariable` calls on the server and no new loop or PFH behavior.
+
