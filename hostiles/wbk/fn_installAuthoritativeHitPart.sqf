@@ -11,7 +11,7 @@
  *  Domain: Any (must run where the unit is local)
  */
 
-params ["_unit"];
+params ["_unit", ["_markReady", true]];
 
 if (isNull _unit || {!alive _unit}) exitWith {};
 if (!local _unit) exitWith {
@@ -112,13 +112,14 @@ private _ehId = switch (_family) do {
 };
 
 _unit setVariable ["EJ_wbkAuthoritativeHitPartId", _ehId];
-_unit setVariable ["EJ_wbkScoreHookReady", _ehId >= 0, true];
+_unit setVariable ["EJ_wbkScoreHookReady", _markReady && {_ehId >= 0}, true];
 
 diag_log format [
-    "[EJ] Authoritative HitPart installed: class=%1 family=%2 hook=%3 local=%4 maxHP=%5",
+    "[EJ] Authoritative HitPart installed: class=%1 family=%2 hook=%3 local=%4 maxHP=%5 ready=%6",
     _className,
     _family,
     typeOf _hookObject,
     local _hookObject,
-    _unit getVariable ["EJ_wbk_maxHP", -1]
+    _unit getVariable ["EJ_wbk_maxHP", -1],
+    _unit getVariable ["EJ_wbkScoreHookReady", false]
 ];

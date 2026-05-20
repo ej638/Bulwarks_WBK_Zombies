@@ -3072,3 +3072,49 @@ The installer snapshots `EJ_wbk_maxHP`, marks `EJ_wbkHitFamily`, and sets `EJ_wb
 
 Patch 2 adds no PFHs and no persistent polling. The only timed behavior added here is the documented per-hit cooldown reset for Smasher/Goliath stagger gating, and those only run when the documented stun conditions are met.
 
+### Patch 3 — Spawn-Time Authoritative Install (2026-05-19)
+
+**Status:** Implemented, pending in-game validation
+
+### Problem
+
+Even after Patch 2, live units were still wired through the old deferred observer path in `fn_spawnWBKUnit.sqf`. The spawn flow still:
+
+1. waited for `WBK_AI_AttachedHandlers`,
+2. slept a fixed 1.0s,
+3. registered `fn_registerHitPartBridge` on the unit owner.
+
+That meant the authoritative handlers existed in the repo but were not the runtime path yet. It also preserved the single-attempt install race that the authoritative plan was meant to remove.
+
+### Fix
+
+The deferred bridge install block in `fn_spawnWBKUnit.sqf` was replaced with a bounded init-time authoritative install loop:
+
+- wait for `WBK_AI_AttachedHandlers` or timeout,
+- for a short startup window, repeatedly dispatch `EJ_fnc_installAuthoritativeHitPart` to the current unit owner with `markReady=false`,
+- perform a final install attempt with `markReady=true`,
+- log if the unit never reports `EJ_wbkScoreHookReady` by the end of the window.
+
+This removes the old single fixed `sleep 1.0` dependency and gives the adapter multiple chances to win the one-time WBK `removeAllEventHandlers "HitPart"` race during unit startup.
+
+### Adjacent Bootstrap Change
+
+Once the authoritative handlers were wired in, leaving MPHit as the old primary scoring path would have caused double-awards. `MPHit` in `fn_spawnWBKUnit.sqf` therefore moved to the planned bootstrap-only role at the same time:
+
+- while `EJ_wbkScoreHookReady` is `false`, MPHit can still award the flat fallback score,
+- once `EJ_wbkScoreHookReady` is `true`, MPHit stops awarding score.
+
+To preserve symmetric dedup during the bootstrap window, `fn_wbkCommitHitAndMaybeKill.sqf` now records `EJ_lastHitPartTime` and suppresses its own hit-score award when `EJ_lastMPHitTime` shows MPHit already won the race on the same impact.
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `hostiles/wbk/fn_spawnWBKUnit.sqf` | Replaced deferred `registerHitPartBridge` block with bounded authoritative install dispatch; changed MPHit from primary scorer to bootstrap fallback gated by `EJ_wbkScoreHookReady` |
+| `hostiles/wbk/fn_installAuthoritativeHitPart.sqf` | Added optional `_markReady` param so retry attempts can install the handler without marking the unit ready until the final bounded attempt |
+| `hostiles/wbk/fn_wbkCommitHitAndMaybeKill.sqf` | Added authoritative-hit vs MPHit symmetric dedup (`EJ_lastHitPartTime` / `EJ_lastMPHitTime`) for the bootstrap window |
+
+### Performance Notes
+
+Patch 3 keeps the retry behavior bounded to unit startup only. The new retry loop is not a PFH and does not persist past the short install window, so the change does not add continuous wave-time polling.
+

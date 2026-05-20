@@ -8,8 +8,9 @@
  *  and the appropriate AI script.
  *
  *  Attaches Bulwarks scoring hooks:
- *    - Killed EH  → killPoints_fnc_killed (fires when WBK calls setDamage 1)
- *    - HitPart EH → EJ_fnc_wbkHitPartScore (bridges synthetic damage → score)
+ *    - MPKilled EH   → killPoints_fnc_killed (fires when WBK / adapter calls setDamage 1)
+ *    - MPHit EH      → bootstrap fallback until authoritative HitPart install is ready
+ *    - HitPart hook  → authoritative installer replaces stock WBK HitPart during bounded init retry
  *
  *  Params:
  *    _pos           — ATL position to spawn at
@@ -198,12 +199,11 @@ _unit addMPEventHandler ["MPKilled", {
     _this call killPoints_fnc_killed;
 }];
 
-// MPHit EH — PRIMARY hit scoring path.  Fires on ALL machines for every hit,
-// immune to WBK's removeAllEventHandlers "HitPart".
-// With allowDamage false (set every tick by WBK PFH), damage param is 0,
-// but instigator/causedBy are still valid. Awards a flat hit score.
-// If the HitPart bridge (below) also fires, it provides more precise
-// damage-based scoring and sets a dedup timestamp so we don't double-score.
+// MPHit EH — bootstrap fallback path. Fires on ALL machines for every hit,
+// so it remains available while the authoritative HitPart install is still
+// settling during unit startup. Once EJ_wbkScoreHookReady is true, MPHit no
+// longer awards score — correctness should then come only from the owner-local
+// authoritative HitPart path.
 _unit addMPEventHandler ["MPHit", {
     if (!isServer) exitWith {};
     params ["_unit", "_causedBy", "_damage", "_instigator"];
@@ -216,19 +216,21 @@ _unit addMPEventHandler ["MPHit", {
     };
     if (isNull _scorer || {!isPlayer _scorer}) exitWith {};
 
-    // Always update last scorer for Killed EH instigator fallback
+    // Keep last-scorer state warm even during bootstrap.
     _unit setVariable ["EJ_lastScorer", _scorer];
 
-    // Symmetric dedup: if HitPart bridge already scored this hit (within 50ms),
-    // skip flat scoring — HitPart provides more precise damage-based scoring.
+    // If the authoritative HitPart path already processed this hit (within 50ms),
+    // skip the flat fallback award.
     private _lastHPTime = _unit getVariable ["EJ_lastHitPartTime", -1];
     if (diag_tickTime - _lastHPTime < 0.05) exitWith {};
 
-    // Award flat hit score (can't get ammo data from MPHit, so use average)
+    // Once the authoritative hook is confirmed ready, MPHit becomes telemetry-only.
+    if (_unit getVariable ["EJ_wbkScoreHookReady", false]) exitWith {};
+
+    // Award flat bootstrap score (can't get ammo data from MPHit, so use average)
     private _scoreVal = SCORE_HIT + (SCORE_DAMAGE_BASE * 0.5);
 
-    // Record award time so HitPart can detect if we got here first.
-    // HitPart checks EJ_lastMPHitTime and skips its score if we already fired.
+    // Record award time so the authoritative commit can detect if bootstrap won the race.
     _unit setVariable ["EJ_lastMPHitTime", diag_tickTime];
 
     [_scorer, _scoreVal] call killPoints_fnc_add;
@@ -242,22 +244,28 @@ _unit addMPEventHandler ["MPHit", {
     [_unit, round _scoreVal, [0.1, 1, 0.1]] remoteExec ["killPoints_fnc_hitMarker", _scorer];
 }];
 
-// --- Deferred init: HitPart bridge + maxHP snapshot ---
-// WBK's AI script (fired async via Extended_InitPost → execVM) ends with:
-//   1. PFH registrations → stores IDs in WBK_AI_AttachedHandlers  (last sync line)
-//   2. remoteExec ["spawn", 0, true] → removeAllEventHandlers "HitPart" + add WBK HitPart
-//
-// If we add our HitPart EH immediately, WBK's removeAllEventHandlers wipes it.
-// Solution: wait for WBK_AI_AttachedHandlers (confirms script body done),
-// then sleep to let the queued remoteExec land, THEN register our bridge EH.
-//
-// The bridge EH is registered via fn_registerHitPartBridge, which handles
-// HC locality: if the unit was offloaded to a HC during the wait, the
-// registration is remoteExec'd to the HC so the EH fires there and relays
-// score data back to the server.
+// --- Deferred init: bounded authoritative HitPart installation ---
+// WBK's init path queues its own HitPart install via remoteExec ["spawn", 0, true],
+// so one immediate replacement attempt is not reliable. During a short startup
+// window, keep re-installing the authoritative handler on the unit owner. The
+// final attempt marks EJ_wbkScoreHookReady=true only after the bounded retry
+// window completes, which lets MPHit remain the bootstrap fallback while the
+// install race is still settling.
 [_unit] spawn {
     params ["_u"];
     private _timeout = diag_tickTime + 8;
+    private _retryInterval = 0.5;
+    private _installWindow = 2.0;
+
+    private _dispatchInstall = {
+        params ["_unit", ["_markReady", true]];
+
+        if (local _unit) then {
+            [_unit, _markReady] call EJ_fnc_installAuthoritativeHitPart;
+        } else {
+            [_unit, _markReady] remoteExecCall ["EJ_fnc_installAuthoritativeHitPart", owner _unit];
+        };
+    };
 
     // Phase 1: Wait for WBK AI script to finish its synchronous body
     waitUntil {
@@ -267,19 +275,22 @@ _unit addMPEventHandler ["MPHit", {
     };
     if (!alive _u) exitWith {};
 
-    // Phase 2: Yield frames to let WBK's remoteExec ["spawn",0,true] process.
-    // The remoteExec was queued during Phase 1; it needs scheduler time to execute
-    // removeAllEventHandlers "HitPart" and add WBK's own HitPart EH.
-    sleep 1.0;
+    private _installDeadline = diag_tickTime + _installWindow;
+
+    while {alive _u && {diag_tickTime < (_installDeadline - _retryInterval)}} do {
+        [_u, false] call _dispatchInstall;
+        sleep _retryInterval;
+    };
     if (!alive _u) exitWith {};
 
-    // Phase 3: Register HitPart bridge on wherever the unit currently lives.
-    // If the unit is still server-local, register directly.
-    // If it was offloaded to a Headless Client, remoteExec to that machine.
-    if (local _u) then {
-        [_u] call EJ_fnc_registerHitPartBridge;
-    } else {
-        [_u] remoteExecCall ["EJ_fnc_registerHitPartBridge", owner _u];
+    [_u, true] call _dispatchInstall;
+    sleep _retryInterval;
+
+    if (!(_u getVariable ["EJ_wbkScoreHookReady", false])) then {
+        diag_log format [
+            "[EJ] Authoritative HitPart install did not report ready for %1 within startup window.",
+            typeOf _u
+        ];
     };
 };
 

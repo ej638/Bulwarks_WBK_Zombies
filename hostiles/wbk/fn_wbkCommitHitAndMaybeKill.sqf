@@ -46,7 +46,16 @@ if (_hasValidScorer) then {
     _target setVariable ["EJ_lastScorer", _scorer];
 };
 
-if (_hasValidScorer && {_scoringDamage > 0}) then {
+private _hasScorableDamage = _hasValidScorer && {_scoringDamage > 0};
+private _lastMPHitTime = _target getVariable ["EJ_lastMPHitTime", -1];
+private _mpHitWonRace = false;
+
+if (_hasScorableDamage) then {
+    _target setVariable ["EJ_lastHitPartTime", diag_tickTime];
+    _mpHitWonRace = diag_tickTime - _lastMPHitTime < 0.05;
+};
+
+if (_hasScorableDamage && {!_mpHitWonRace}) then {
     private _maxHP = (_target getVariable ["EJ_wbk_maxHP", 1]) max 1;
     private _normDmg = ((_scoringDamage / _maxHP) max 0) min 1;
     private _scoreVal = SCORE_HIT + (SCORE_DAMAGE_BASE * _normDmg);
@@ -58,6 +67,15 @@ if (_hasValidScorer && {_scoringDamage > 0}) then {
     _target setVariable ["points", _pointsArr];
 
     [_target, round _scoreVal, [0.1, 1, 0.1]] remoteExec ["killPoints_fnc_hitMarker", _scorer];
+} else {
+    if (_mpHitWonRace) then {
+        diag_log format [
+            "[EJ] WBK commit dedup: MPHit won race on %1 (seq=%2 meta=%3).",
+            typeOf _target,
+            _hitSeq,
+            _hitMeta
+        ];
+    };
 };
 
 if (_isLethal) then {
