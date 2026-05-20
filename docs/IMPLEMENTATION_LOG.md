@@ -3189,3 +3189,39 @@ The legacy scorer body is intentionally retained only for the not-ready compatib
 
 Patch 6 adds only diagnostic logging and one readiness check on the legacy fallback path. No new loop, PFH, or steady-state polling was introduced.
 
+### Patch 7 — Function Registration + RemoteExec Surface (2026-05-19)
+
+**Status:** Completed via prior authoritative-path patches; no further runtime code changes were required
+
+### Problem
+
+The authoritative scoring branch introduced a new installer, a new server commit function, and five family-specific HitPart handlers. Patch 7 required a validation checkpoint to ensure those new functions were actually registered in the mission function surface and that only the functions which truly need RemoteExec access were exposed there.
+
+### Result
+
+The current registration state matches the Patch 7 plan:
+
+- `hostiles/wbk/Functions.hpp` already declares the full authoritative function set:
+  - `installAuthoritativeHitPart`
+  - `wbkCommitHitAndMaybeKill`
+  - `wbkResolveScorer`
+  - `wbkHitPartStandard`
+  - `wbkHitPartLeaper`
+  - `wbkHitPartBloater`
+  - `wbkHitPartSmasher`
+  - `wbkHitPartGoliath`
+- `description.ext` already exposes the installer and the server commit through `CfgRemoteExec`, which is the only explicit RemoteExec access the authoritative runtime path needs.
+
+The legacy observer-path entries remain present during rollout because Patch 6 deliberately kept those functions as compatibility wrappers rather than deleting them outright.
+
+### Files Reviewed / Confirmed
+
+| File | Confirmation |
+|---|---|
+| `hostiles/wbk/Functions.hpp` | Full authoritative function set is registered in CfgFunctions |
+| `description.ext` | `installAuthoritativeHitPart` and `wbkCommitHitAndMaybeKill` are available in `CfgRemoteExec`; legacy wrapper entries remain during rollout |
+
+### Performance Notes
+
+Patch 7 was a registration checkpoint only. No new runtime logic, no PFHs, and no additional polling behavior were introduced here.
+
